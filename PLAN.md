@@ -1,7 +1,7 @@
 # Kart — Implementation Plan
 
 ## Context
-Building a deal-finder web app ("Kart") that helps users make informed purchase decisions. Users search for products, view cross-vendor price comparisons and history, add items to a wishlist, set price drop alerts, and get AI-powered buy/wait recommendations. MVP uses Best Buy as the sole vendor with a pluggable adapter architecture designed to onboard new vendors with minimal code changes.
+Building a deal-finder web app ("Kart") that helps users make informed purchase decisions. Users search for products, view cross-vendor price comparisons and history, add items to a wishlist, set price drop alerts, and get AI-powered buy/wait recommendations. MVP uses eBay as the sole vendor with a pluggable adapter architecture designed to onboard new vendors with minimal code changes.
 
 Auth is required only for wishlist and alerts. Search and product pages are publicly accessible.
 
@@ -26,10 +26,12 @@ Auth is required only for wishlist and alerts. Search and product pages are publ
 | Database | Supabase PostgreSQL |
 | Auth | Supabase Auth (email/password + Google OAuth) |
 | Background jobs | Supabase pg_cron + Edge Functions |
-| Vendors (MVP) | Best Buy API (free, no affiliate required) |
+| Vendors (MVP) | eBay Browse API (free, accepts any email, 5,000 calls/day) |
 | Email alerts | Resend (3,000 emails/month free) |
 | AI recommendations | Groq free tier — Llama 3 8B (14,400 req/day free) |
-| Hosting | Vercel (Hobby free tier) |
+| Source control | GitLab |
+| CI/CD | GitLab CI/CD (`.gitlab-ci.yml`) |
+| Hosting | Railway (free tier, $5/mo credit) |
 
 ---
 
@@ -77,7 +79,7 @@ kart/
 │   │   ├── types.ts                      # VendorAdapter interface, VendorProduct type
 │   │   ├── registry.ts                   # ONLY file that changes when adding a vendor
 │   │   └── adapters/
-│   │       └── bestbuy.ts
+│   │       └── ebay.ts
 │   │
 │   ├── lib/
 │   │   ├── auth/
@@ -277,17 +279,18 @@ Zero changes to services, repositories, API routes, or the frontend.
 
 ### Phase 0 — External Service Setup
 1. **Supabase** — Create project, enable `pg_cron` and `pg_net` extensions
-2. **Best Buy API** — Register at developer.bestbuy.com (free, no affiliate required)
+2. **eBay Developer API** — Register at developer.ebay.com (free, accepts any email). Create an app, obtain Client ID (App ID) and Client Secret. Use the Browse API with OAuth 2.0 client credentials flow.
 3. **Resend** — Create account, verify sending domain
 4. **Groq** — Create account at console.groq.com (free: 14,400 req/day)
-5. **Vercel** — Create project, connect GitHub repo, add env vars
+5. **Railway** — Create account at railway.app, create a new project + service, set all app env vars in the Railway dashboard. Generate an API token under Account Settings → Tokens.
+   **GitLab** — Push repo to GitLab. Under Settings → CI/CD → Variables, add `RAILWAY_TOKEN` (masked + protected). All other app secrets live in Railway, not GitLab.
 6. **Google OAuth** — Supabase dashboard → Authentication → Providers → Google
 7. Populate `.env.local` (see Environment Variables section)
 
 ### Phase 1 — Database
 1. Install Supabase CLI, link project: `supabase link --project-ref <ref>`
 2. Create migration files (001–004), push: `supabase db push`
-3. Seed vendors: `INSERT INTO vendors VALUES ('bestbuy', 'Best Buy', true, '{"rateLimit": 5}')`
+3. Seed vendors: `INSERT INTO vendors VALUES ('ebay', 'eBay', true, '{"rateLimit": 5}')`
 4. Generate types: `supabase gen types typescript --project-id <ref> > src/types/database.types.ts`
 
 **Rule:** Every schema change → new migration file → `supabase db push` → regenerate types. Never use the dashboard.
@@ -298,21 +301,30 @@ Zero changes to services, repositories, API routes, or the frontend.
 3. Install: `npm install @supabase/supabase-js @supabase/ssr zod groq-sdk resend`
 4. Create `lib/supabase/client.ts`, `lib/supabase/server.ts`
 5. Create full auth facade: `lib/auth/index.ts` + `lib/auth/providers/supabase.ts`
-6. Configure `next.config.ts`: security headers + image `remotePatterns` (bestbuy.com, bbystatic.com)
+6. Configure `next.config.ts`: security headers + image `remotePatterns` (ebayimg.com, i.ebayimg.com)
 7. Configure `middleware.ts`: IP rate limiting (20/min search, 30/min wishlist, 10/min alerts)
+8. Add `.gitlab-ci.yml` to project root (see CI/CD Pipeline section below)
+9. Add `"typecheck": "tsc --noEmit"` to `package.json` scripts (used by the lint stage)
 
 ### Phase 3 — Vendor Adapter Layer
 1. Create `vendors/types.ts` — `VendorAdapter` interface, `VendorProduct` type
-2. Create `vendors/adapters/bestbuy.ts` — search, getProduct, getCurrentPrice, validateProductId
-3. Create `vendors/registry.ts` — register Best Buy adapter
+2. Create `vendors/adapters/ebay.ts` — search, getProduct, getCurrentPrice, validateProductId
+3. Create `vendors/registry.ts` — register eBay adapter
 4. Test in isolation with `scripts/test-adapter.ts` before wiring to services
 
-Best Buy adapter normalization:
-- `salePrice ?? regularPrice` → `price`
-- `regularPrice` → `originalPrice`
-- `inStoreAvailability` → `availability`
-- `customerReviewAverage` → `rating`
-- `upc` → `upc` (universal matching key)
+eBay adapter notes:
+- Auth: OAuth 2.0 client credentials flow — exchange Client ID + Secret for an app token via `https://api.ebay.com/identity/v1/oauth2/token`. Token is valid for 2 hours; cache it and refresh when expired.
+- Search endpoint: `GET /buy/browse/v1/item_summary/search?q=<query>&filter=buyingOptions:FIXED_PRICE,conditions:NEW&limit=20`
+- Product endpoint: `GET /buy/browse/v1/item/<itemId>`
+- Field normalization:
+  - `price.value` → `price`
+  - `marketingPrice.originalPrice.value` → `originalPrice` (present when on sale)
+  - `estimatedAvailabilities[0].availabilityThreshold > 0` → `'in_stock'` / `'out_of_stock'`
+  - `seller.feedbackScore` + `seller.feedbackPercentage` → closest proxy to `rating` (eBay has no product-level star rating)
+  - `gtin` → `upc` (universal matching key — present on new retail items, null on others)
+  - `itemId` → `vendorProductId`
+- Filter to `FIXED_PRICE` + `NEW` condition for clean, retail-like data
+- Items without a `gtin` still get tracked — they just won't cross-match to other vendors until a GTIN is available
 
 ### Phase 4 — Repositories
 Four classes, each using `createServerClient()`. No business logic — queries only.
@@ -366,7 +378,7 @@ Thin. Each: parse Zod schema → optional `auth.requireUser()` → one service c
    - Process in batches of 10 with `Promise.allSettled`
    - Per product: getCurrentPrice → insert snapshot → check alert thresholds → send email if triggered
 2. Deploy: `supabase functions deploy poll-prices`
-3. Set secrets: `supabase secrets set BESTBUY_API_KEY=... RESEND_API_KEY=...`
+3. Set secrets: `supabase secrets set EBAY_CLIENT_ID=... EBAY_CLIENT_SECRET=... RESEND_API_KEY=...`
 4. Register cron job (migration 003) — triggers at `0 * * * *` (hourly)
 5. Register daily aggregation job (migration 004) — triggers at `5 0 * * *`
    - Rolls up hourly → daily: `INSERT INTO price_history_daily ... GROUP BY date`
@@ -411,7 +423,8 @@ Build pages in order (each depends on the previous):
 NEXT_PUBLIC_SUPABASE_URL=         # browser-safe
 NEXT_PUBLIC_SUPABASE_ANON_KEY=    # browser-safe (RLS is the protection layer)
 SUPABASE_SERVICE_ROLE_KEY=        # server + edge function only — bypasses RLS
-BESTBUY_API_KEY=                  # server only
+EBAY_CLIENT_ID=                   # server only (eBay App ID)
+EBAY_CLIENT_SECRET=               # server only (eBay Cert ID / Client Secret)
 RESEND_API_KEY=                   # server only
 RESEND_FROM_EMAIL=                # e.g. alerts@yourdomain.com
 UNSUBSCRIBE_SECRET=               # random 32+ char string (openssl rand -hex 32)
@@ -426,7 +439,7 @@ GROQ_API_KEY=                     # server only
 |---|---|---|
 | Edge function CPU limit (150ms) | Keep adapters lean, batch ≤50 products | Migrate to BullMQ + Upstash Redis |
 | Storage growth (free: 500MB) | Daily rollup + 7-day raw snapshot retention | Upgrade Supabase or tune retention |
-| Best Buy rate limit (5 req/sec) | Batch processing with per-chunk delays | Per-vendor queues with rate limiters |
+| eBay rate limit (5,000 calls/day) | Batch processing, only poll wishlisted items | Per-vendor queues with rate limiters |
 | Vercel API timeout (10s free) | 7s ceiling timeout, return partial results | Upgrade to Pro or use background jobs |
 | In-memory rate limiting resets | Acceptable for MVP | Replace with Upstash Rate Limiting |
 | Supabase connection pool (60 free) | PostgREST client in edge functions | Connection pooler (PgBouncer via Supabase) |
@@ -441,3 +454,62 @@ GROQ_API_KEY=                     # server only
 3. `INSERT INTO vendors VALUES ('<id>', '<name>', true, '{"rateLimit": N}');`
 
 No other changes required.
+
+---
+
+## CI/CD Pipeline (`.gitlab-ci.yml`)
+
+```yaml
+stages:
+  - test
+  - deploy
+
+variables:
+  NODE_VERSION: "20"
+
+# Runs on every merge request and push to main
+# Catches type errors and lint issues before they reach production
+lint-and-typecheck:
+  stage: test
+  image: node:${NODE_VERSION}-alpine
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+  script:
+    - npm ci
+    - npm run lint
+    - npm run typecheck
+  only:
+    - merge_requests
+    - main
+
+# Runs only on pushes to main — deploys to Railway
+deploy-production:
+  stage: deploy
+  image: node:${NODE_VERSION}-alpine
+  script:
+    - npm install -g @railway/cli
+    - railway up --service kart --detach
+  environment:
+    name: production
+    url: https://your-app.railway.app
+  only:
+    - main
+```
+
+**Environment variable rules:**
+- `RAILWAY_TOKEN` — set in GitLab CI/CD Variables (masked + protected). Used by the pipeline to authenticate Railway deploys.
+- All app secrets (`EBAY_CLIENT_ID`, `SUPABASE_SERVICE_ROLE_KEY`, etc.) — set in Railway dashboard under the service's Variables tab. Railway injects them at runtime. They never touch GitLab.
+
+---
+
+## eBay API Authentication Notes
+eBay uses OAuth 2.0 client credentials (not a single API key). The flow is:
+1. Base64-encode `CLIENT_ID:CLIENT_SECRET`
+2. POST to `https://api.ebay.com/identity/v1/oauth2/token` with `grant_type=client_credentials` and scope `https://api.ebay.com/oauth/api_scope/buy.item.summary`
+3. Response contains `access_token` valid for 2 hours
+4. Attach as `Authorization: Bearer <token>` on all Browse API calls
+5. Cache the token in memory and refresh when expired — don't fetch a new token per request
+
+This token management is handled inside `vendors/adapters/ebay.ts` transparently. The rest of the app never sees it.
