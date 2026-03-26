@@ -114,8 +114,8 @@ kart/
 │   ├── migrations/
 │   │   ├── 001_initial_schema.sql        # All tables + indexes
 │   │   ├── 002_rls_policies.sql          # RLS as SQL (never dashboard config)
-│   │   ├── 003_cron_jobs.sql             # pg_cron schedules
-│   │   └── 004_daily_aggregation.sql     # Hourly → daily rollup logic
+│   │   └── 003_seed_vendors.sql          # Vendor rows (CheapShark + storefronts)
+│   │   # NOTE: cron job setup is NOT a migration — see scripts/setup-cron-jobs.sql
 │   └── functions/
 │       └── poll-prices/
 │           └── index.ts                  # Self-contained Deno edge function
@@ -442,18 +442,34 @@ Thin. Each: parse Zod schema → optional `auth.requireUser()` → one service c
 
 ### Phase 7 — Edge Function + pg_cron
 1. Implement `supabase/functions/poll-prices/index.ts` (Deno, self-contained):
-   - Verify `Authorization: Bearer <service-role-key>` header
+   - Verify `Authorization: Bearer <CRON_SECRET>` header (NOT the service role key)
    - Query tracked vendor_products (those on any wishlist)
    - Process in batches of 10 with `Promise.allSettled`
    - Per product: getCurrentPrice → insert snapshot → check alert thresholds → send email if triggered
 2. Deploy: `supabase functions deploy poll-prices`
-3. Set secrets: `supabase secrets set RESEND_API_KEY=... GROQ_API_KEY=... SUPABASE_SERVICE_ROLE_KEY=...`
+3. Generate and set the cron secret:
+   ```
+   openssl rand -hex 32   # copy output
+   supabase secrets set CRON_SECRET=<output>
+   ```
+   Also add `CRON_SECRET=<output>` to `.env.local`.
+4. Set remaining function secrets:
+   ```
+   supabase secrets set RESEND_API_KEY=... GROQ_API_KEY=... SUPABASE_SERVICE_ROLE_KEY=...
+   ```
    (No CheapShark secret needed — the API is open)
-4. Register cron job (migration 003) — triggers at `0 * * * *` (hourly)
-5. Register daily aggregation job (migration 004) — triggers at `5 0 * * *`
-   - Rolls up hourly → daily: `INSERT INTO price_history_daily ... GROUP BY date`
-   - Deletes raw snapshots older than 7 days
-   - Clears expired search cache entries
+5. Register cron jobs — run `scripts/setup-cron-jobs.sql` manually:
+   - Replace `<PROJECT_REF>` with your Supabase project reference ID
+   - Replace `<CRON_SECRET>` with the value you generated in step 3
+   - Run via: `supabase db execute --file scripts/setup-cron-jobs.sql`
+   - Job 1 (`poll-prices-hourly`): triggers at `0 * * * *` (hourly)
+   - Job 2 (`aggregate-daily-prices`): triggers at `5 0 * * *`
+     - Rolls up hourly → daily: `INSERT INTO price_history_daily ... GROUP BY date`
+     - Deletes raw snapshots older than 7 days
+     - Clears expired search cache entries
+
+   **Why not a migration?** Cron jobs reference secrets (`CRON_SECRET`) that can't be committed
+   to a public repo. `scripts/setup-cron-jobs.sql` uses placeholders and is a one-time manual step.
 
 ### Phase 8 — Frontend
 Build pages in order (each depends on the previous):
@@ -478,7 +494,7 @@ Build pages in order (each depends on the previous):
 | IDOR | Every mutation includes `.eq('user_id', userId)` in repository layer |
 | Input injection | All API inputs validated with Zod before touching DB or vendor APIs |
 | API abuse | IP-based rate limiting in middleware.ts (in-memory, upgradeable to Upstash) |
-| Edge function abuse | Service role key verified in Authorization header |
+| Edge function abuse | CRON_SECRET verified in Authorization header (not the service role key) |
 | XSS via vendor data | JSX escaping by default; no dangerouslySetInnerHTML; Next.js Image for all product images |
 | Secret exposure | NEXT_PUBLIC_ prefix only for anon key + Supabase URL; all other keys server-side only |
 | CAN-SPAM | HMAC-signed unsubscribe token in every alert email |
@@ -497,6 +513,8 @@ RESEND_API_KEY=                   # server only
 RESEND_FROM_EMAIL=                # e.g. alerts@yourdomain.com or onboarding@resend.dev
 UNSUBSCRIBE_SECRET=               # random 32+ char string (openssl rand -hex 32)
 GROQ_API_KEY=                     # server only
+CRON_SECRET=                      # random 32+ char string — verified by poll-prices Edge Function
+                                  # also set via: supabase secrets set CRON_SECRET=<value>
 # Note: CheapShark requires no API key
 ```
 

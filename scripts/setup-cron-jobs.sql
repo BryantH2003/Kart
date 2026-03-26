@@ -1,16 +1,26 @@
--- 003_cron_jobs.sql
--- pg_cron schedules. Requires pg_cron and pg_net extensions enabled in the dashboard.
+-- scripts/setup-cron-jobs.sql
+-- Manual setup script for pg_cron jobs.
+-- Run this ONCE against your Supabase project after:
+--   1. Enabling pg_cron and pg_net extensions in Dashboard → Database → Extensions
+--   2. Deploying the poll-prices Edge Function: supabase functions deploy poll-prices
+--   3. Setting the cron secret: supabase secrets set CRON_SECRET=$(openssl rand -hex 32)
+--      (Copy the generated secret — you'll also add it to .env.local as CRON_SECRET=)
 --
--- Jobs registered here:
---   1. poll-prices-hourly      — triggers the poll-prices Edge Function every hour
---   2. aggregate-daily-prices  — rolls up hourly snapshots → daily at midnight
+-- Replace <PROJECT_REF> with your Supabase project reference ID before running.
+-- Find it in: Dashboard → Project Settings → General → Reference ID
 --
--- IMPORTANT: Replace <PROJECT_REF> with your actual Supabase project reference ID
--- before running this migration. Find it in: Project Settings → General → Reference ID
+-- Run with:
+--   supabase db execute --file scripts/setup-cron-jobs.sql
+-- Or paste into the Supabase SQL editor.
+--
+-- SECURITY NOTE: This file uses a CRON_SECRET (not the service role key).
+-- The Edge Function verifies this secret. Never put the service role key in a cron job.
 
 -- ── 1. Hourly price polling ───────────────────────────────────────────────────
--- Calls the poll-prices Edge Function via pg_net.
--- The Edge Function verifies the service role key before processing.
+-- Calls the poll-prices Edge Function via pg_net every hour.
+-- The Edge Function verifies the Authorization header against CRON_SECRET.
+--
+-- Before running: replace <PROJECT_REF> and <CRON_SECRET> with real values.
 
 SELECT cron.schedule(
   'poll-prices-hourly',
@@ -20,7 +30,7 @@ SELECT cron.schedule(
     url     := 'https://<PROJECT_REF>.supabase.co/functions/v1/poll-prices',
     headers := jsonb_build_object(
       'Content-Type',  'application/json',
-      'Authorization', 'Bearer ' || current_setting('app.service_role_key', true)
+      'Authorization', 'Bearer <CRON_SECRET>'
     ),
     body    := '{}'::jsonb
   );
@@ -28,10 +38,10 @@ SELECT cron.schedule(
 );
 
 -- ── 2. Daily aggregation + cleanup ───────────────────────────────────────────
--- Runs at 00:05 each night (just after midnight) to:
+-- Runs at 00:05 UTC each night to:
 --   a. Roll up the previous day's hourly snapshots into price_history_daily
 --   b. Delete raw snapshots older than 7 days (storage management)
---   c. Clear expired search cache entries
+--   c. Clear expired search cache entries (30-min TTL)
 
 SELECT cron.schedule(
   'aggregate-daily-prices',

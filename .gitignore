@@ -25,6 +25,8 @@ supabase/.branches/
 # Migration files and functions ARE committed — they are schema history
 # Do NOT add supabase/migrations/ or supabase/functions/ here
 
+# scripts/ IS committed — setup-cron-jobs.sql uses <PLACEHOLDER> values only, no real secrets
+
 # ── Hosting / deployment ──────────────────────────────────────────────────────
 .vercel/
 .railway/
