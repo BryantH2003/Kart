@@ -1,7 +1,7 @@
 # Kart — Implementation Plan
 
 ## Context
-Building a deal-finder web app ("Kart") that helps users make informed purchase decisions. Users search for products, view cross-vendor price comparisons and history, add items to a wishlist, set price drop alerts, and get AI-powered buy/wait recommendations. MVP uses eBay as the sole vendor with a pluggable adapter architecture designed to onboard new vendors with minimal code changes.
+Building a deal-finder web app ("Kart") that helps users make informed purchase decisions. Users search for products, view cross-vendor price comparisons and history, add items to a wishlist, set price drop alerts, and get AI-powered buy/wait recommendations. MVP uses CheapShark as the data source — a free, no-key API that aggregates PC game prices across Steam, GOG, Green Man Gaming, Humble Store, and 15+ other storefronts. This naturally demonstrates the multi-store comparison feature that is Kart's core value. The vendor adapter architecture allows new vendors (eBay, Best Buy, etc.) to be added later by writing one adapter file.
 
 Auth is required only for wishlist and alerts. Search and product pages are publicly accessible.
 
@@ -26,7 +26,7 @@ Auth is required only for wishlist and alerts. Search and product pages are publ
 | Database | Supabase PostgreSQL |
 | Auth | Supabase Auth (email/password + Google OAuth) |
 | Background jobs | Supabase pg_cron + Edge Functions |
-| Vendors (MVP) | eBay Browse API (free, accepts any email, 5,000 calls/day) |
+| Vendors (MVP) | CheapShark API (free, no API key, no registration required) |
 | Email alerts | Resend (3,000 emails/month free) |
 | AI recommendations | Groq free tier — Llama 3 8B (14,400 req/day free) |
 | Source control | GitLab |
@@ -79,7 +79,7 @@ kart/
 │   │   ├── types.ts                      # VendorAdapter interface, VendorProduct type
 │   │   ├── registry.ts                   # ONLY file that changes when adding a vendor
 │   │   └── adapters/
-│   │       └── ebay.ts
+│   │       └── cheapshark.ts
 │   │
 │   ├── lib/
 │   │   ├── auth/
@@ -140,13 +140,13 @@ CREATE TABLE vendors (
 );
 
 CREATE TABLE canonical_products (
-  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  upc        TEXT UNIQUE,
-  name       TEXT NOT NULL,
-  brand      TEXT,
-  category   TEXT,
-  image_url  TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  external_id TEXT UNIQUE,     -- steamAppID for games, UPC for physical goods, etc.
+  name        TEXT NOT NULL,
+  brand       TEXT,
+  category    TEXT,
+  image_url   TEXT,
+  created_at  TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE vendor_products (
@@ -162,11 +162,12 @@ CREATE TABLE vendor_products (
 CREATE TABLE price_snapshots (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   vendor_product_id UUID REFERENCES vendor_products ON DELETE CASCADE,
-  price             NUMERIC(10,2) NOT NULL,
-  original_price    NUMERIC(10,2),
+  price             NUMERIC(10,2) NOT NULL,   -- cheapest price across all stores
+  original_price    NUMERIC(10,2),            -- normal/non-sale price
   availability      TEXT CHECK (availability IN ('in_stock','out_of_stock','limited')),
   rating            NUMERIC(3,1),
   review_count      INT,
+  store_prices      JSONB,                    -- per-store breakdown: [{storeName, price, dealUrl}]
   recorded_at       TIMESTAMPTZ DEFAULT now()
 );
 
@@ -279,7 +280,7 @@ Zero changes to services, repositories, API routes, or the frontend.
 
 ### Phase 0 — External Service Setup
 1. **Supabase** — Create project, enable `pg_cron` and `pg_net` extensions
-2. **eBay Developer API** — Register at developer.ebay.com (free, accepts any email). Create an app, obtain Client ID (App ID) and Client Secret. Use the Browse API with OAuth 2.0 client credentials flow.
+2. **CheapShark** — No registration, no API key. Base URL: `https://www.cheapshark.com/api/1.0`. Nothing to do here.
 3. **Resend** — Create account, verify sending domain
 4. **Groq** — Create account at console.groq.com (free: 14,400 req/day)
 5. **Railway** — Create account at railway.app, create a new project + service, set all app env vars in the Railway dashboard. Generate an API token under Account Settings → Tokens.
@@ -290,7 +291,17 @@ Zero changes to services, repositories, API routes, or the frontend.
 ### Phase 1 — Database
 1. Install Supabase CLI, link project: `supabase link --project-ref <ref>`
 2. Create migration files (001–004), push: `supabase db push`
-3. Seed vendors: `INSERT INTO vendors VALUES ('ebay', 'eBay', true, '{"rateLimit": 5}')`
+3. Seed vendors table with CheapShark and each major store it aggregates:
+   ```sql
+   INSERT INTO vendors (id, name, enabled, config) VALUES
+     ('cheapshark',       'CheapShark',        true, '{"rateLimit": 1}'),
+     ('steam',            'Steam',              true, '{"storeId": "1"}'),
+     ('greenmangaming',   'Green Man Gaming',   true, '{"storeId": "2"}'),
+     ('gog',              'GOG',                true, '{"storeId": "7"}'),
+     ('humble',           'Humble Store',       true, '{"storeId": "11"}'),
+     ('fanatical',        'Fanatical',          true, '{"storeId": "15"}'),
+     ('epicgames',        'Epic Games Store',   true, '{"storeId": "25"}');
+   ```
 4. Generate types: `supabase gen types typescript --project-id <ref> > src/types/database.types.ts`
 
 **Rule:** Every schema change → new migration file → `supabase db push` → regenerate types. Never use the dashboard.
@@ -301,37 +312,95 @@ Zero changes to services, repositories, API routes, or the frontend.
 3. Install: `npm install @supabase/supabase-js @supabase/ssr zod groq-sdk resend`
 4. Create `lib/supabase/client.ts`, `lib/supabase/server.ts`
 5. Create full auth facade: `lib/auth/index.ts` + `lib/auth/providers/supabase.ts`
-6. Configure `next.config.ts`: security headers + image `remotePatterns` (ebayimg.com, i.ebayimg.com)
+6. Configure `next.config.ts`: security headers + image `remotePatterns`:
+   - `cdn.akamai.steamstatic.com` (Steam game thumbnails via CheapShark)
+   - `www.cheapshark.com` (fallback thumbnails)
 7. Configure `middleware.ts`: IP rate limiting (20/min search, 30/min wishlist, 10/min alerts)
 8. Add `.gitlab-ci.yml` to project root (see CI/CD Pipeline section below)
 9. Add `"typecheck": "tsc --noEmit"` to `package.json` scripts (used by the lint stage)
 
 ### Phase 3 — Vendor Adapter Layer
 1. Create `vendors/types.ts` — `VendorAdapter` interface, `VendorProduct` type
-2. Create `vendors/adapters/ebay.ts` — search, getProduct, getCurrentPrice, validateProductId
-3. Create `vendors/registry.ts` — register eBay adapter
+2. Create `vendors/adapters/cheapshark.ts` — search, getProduct, getCurrentPrice, validateProductId
+3. Create `vendors/registry.ts` — register CheapShark adapter
 4. Test in isolation with `scripts/test-adapter.ts` before wiring to services
 
-eBay adapter notes:
-- Auth: OAuth 2.0 client credentials flow — exchange Client ID + Secret for an app token via `https://api.ebay.com/identity/v1/oauth2/token`. Token is valid for 2 hours; cache it and refresh when expired.
-- Search endpoint: `GET /buy/browse/v1/item_summary/search?q=<query>&filter=buyingOptions:FIXED_PRICE,conditions:NEW&limit=20`
-- Product endpoint: `GET /buy/browse/v1/item/<itemId>`
-- Field normalization:
-  - `price.value` → `price`
-  - `marketingPrice.originalPrice.value` → `originalPrice` (present when on sale)
-  - `estimatedAvailabilities[0].availabilityThreshold > 0` → `'in_stock'` / `'out_of_stock'`
-  - `seller.feedbackScore` + `seller.feedbackPercentage` → closest proxy to `rating` (eBay has no product-level star rating)
-  - `gtin` → `upc` (universal matching key — present on new retail items, null on others)
-  - `itemId` → `vendorProductId`
-- Filter to `FIXED_PRICE` + `NEW` condition for clean, retail-like data
-- Items without a `gtin` still get tracked — they just won't cross-match to other vendors until a GTIN is available
+**CheapShark adapter notes:**
+
+No authentication required — all endpoints are open.
+
+**Endpoints:**
+- Search: `GET https://www.cheapshark.com/api/1.0/games?title={query}&limit=20`
+- Get all store deals for a game: `GET https://www.cheapshark.com/api/1.0/deals?steamAppID={steamAppID}&pageSize=60`
+- List stores (with isActive flag): `GET https://www.cheapshark.com/api/1.0/stores`
+
+⚠️ `GET /game?id=` is blocked by Cloudflare — do not use it. Use `/deals?steamAppID=` instead.
+
+**Search response shape (`/games`):**
+```json
+[{
+  "gameID": "61",
+  "steamAppID": "8930",
+  "cheapest": "2.99",
+  "cheapestDealID": "SGRhfWxOc7YoCvRw4DGIk...",
+  "external": "Sid Meier's Civilization V",
+  "internalName": "SIDMEIERSCIVILIZATIONV",
+  "thumb": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/8930/capsule_231x87.jpg"
+}]
+```
+
+**Per-store deals response shape (`/deals?steamAppID=8930`) — one object per store:**
+```json
+[{
+  "title": "Sid Meier's Civilization V",
+  "dealID": "SGRhfWxO...",
+  "storeID": "1",
+  "gameID": "61",
+  "salePrice": "2.99",
+  "normalPrice": "29.99",
+  "isOnSale": "1",
+  "metacriticScore": "90",
+  "steamRatingText": "Overwhelmingly Positive",
+  "steamRatingPercent": "95",
+  "steamRatingCount": "77866",
+  "steamAppID": "8930",
+  "releaseDate": 1285027200,
+  "thumb": "https://shared.fastly.steamstatic.com/..."
+}]
+```
+
+**Field normalization:**
+- `gameID` → `vendorProductId`
+- `steamAppID` → `external_id` (canonical matching key — stable across APIs)
+- `title` → `name` (use from deals response — more reliable than `external` from search)
+- `thumb` → `imageUrl`
+- cheapest `salePrice` across all deals → `price`
+- `normalPrice` from cheapest deal → `originalPrice`
+- `releaseDate` (Unix timestamp) → `release_date` (convert: `new Date(releaseDate * 1000)`)
+- `metacriticScore` (string "90") → `metacritic_score` (parseInt)
+- `steamRatingPercent` / 10 → `rating` (e.g., "95" → 9.5 on 0–10 scale)
+- `steamRatingCount` → `review_count`
+- `steamRatingText` → `rating_text` (e.g., "Overwhelmingly Positive")
+- `availability` → always `'in_stock'` (CheapShark only lists active deals)
+- `productUrl` → `https://www.cheapshark.com/redirect?dealID={cheapestDealID}`
+- all deals → `store_prices` JSONB: `[{ storeName, storeId, price, dealUrl }]`
+  Only include deals where the store's `isActive === 1` (fetch store list once and cache it)
+
+**`validateProductId`:** `/^\d+$/.test(id)` — CheapShark game IDs are numeric strings.
+
+**Store prices for the comparison table:**
+`getCurrentPrice(gameID)` calls `/deals?steamAppID={steamAppID}&pageSize=60` and returns:
+- `price` = minimum `salePrice` across all active-store deals
+- `store_prices` JSONB = `[{ storeName, storeId, price, dealUrl }]` for every active-store deal
+
+The service layer persists `storePrices` into the `store_prices` column of `price_snapshots`. The frontend reads this column to render the per-store comparison table.
 
 ### Phase 4 — Repositories
 Four classes, each using `createServerClient()`. No business logic — queries only.
 
 | Repository | Key methods |
 |---|---|
-| `product.repository.ts` | upsertCanonical, upsertVendorProducts, findById, findByUpc |
+| `product.repository.ts` | upsertCanonical, upsertVendorProducts, findById, findByExternalId |
 | `price.repository.ts` | insertSnapshot, getHistory(days), getLatest |
 | `wishlist.repository.ts` | findByUser, insert, delete (with userId check), getTrackedVendorProducts |
 | `cache.repository.ts` | get (30-min TTL check), set, hashQuery |
@@ -343,7 +412,7 @@ Business logic layer. No HTTP, no raw SQL. Calls repositories and vendor adapter
 
 | Service | Responsibility |
 |---|---|
-| `matching.service.ts` | Group VendorProducts by UPC, upsert canonical + vendor records |
+| `matching.service.ts` | Group VendorProducts by external_id (steamAppID), upsert canonical + vendor records |
 | `search.service.ts` | Cache check → fan-out to all adapters (7s timeout) → deduplicate → persist → cache |
 | `product.service.ts` | Assemble canonical + vendor prices + 90-day history for product page |
 | `wishlist.service.ts` | Add/remove items, ownership validation |
@@ -378,7 +447,8 @@ Thin. Each: parse Zod schema → optional `auth.requireUser()` → one service c
    - Process in batches of 10 with `Promise.allSettled`
    - Per product: getCurrentPrice → insert snapshot → check alert thresholds → send email if triggered
 2. Deploy: `supabase functions deploy poll-prices`
-3. Set secrets: `supabase secrets set EBAY_CLIENT_ID=... EBAY_CLIENT_SECRET=... RESEND_API_KEY=...`
+3. Set secrets: `supabase secrets set RESEND_API_KEY=... GROQ_API_KEY=... SUPABASE_SERVICE_ROLE_KEY=...`
+   (No CheapShark secret needed — the API is open)
 4. Register cron job (migration 003) — triggers at `0 * * * *` (hourly)
 5. Register daily aggregation job (migration 004) — triggers at `5 0 * * *`
    - Rolls up hourly → daily: `INSERT INTO price_history_daily ... GROUP BY date`
@@ -423,12 +493,11 @@ Build pages in order (each depends on the previous):
 NEXT_PUBLIC_SUPABASE_URL=         # browser-safe
 NEXT_PUBLIC_SUPABASE_ANON_KEY=    # browser-safe (RLS is the protection layer)
 SUPABASE_SERVICE_ROLE_KEY=        # server + edge function only — bypasses RLS
-EBAY_CLIENT_ID=                   # server only (eBay App ID)
-EBAY_CLIENT_SECRET=               # server only (eBay Cert ID / Client Secret)
 RESEND_API_KEY=                   # server only
-RESEND_FROM_EMAIL=                # e.g. alerts@yourdomain.com
+RESEND_FROM_EMAIL=                # e.g. alerts@yourdomain.com or onboarding@resend.dev
 UNSUBSCRIBE_SECRET=               # random 32+ char string (openssl rand -hex 32)
 GROQ_API_KEY=                     # server only
+# Note: CheapShark requires no API key
 ```
 
 ---
@@ -439,8 +508,8 @@ GROQ_API_KEY=                     # server only
 |---|---|---|
 | Edge function CPU limit (150ms) | Keep adapters lean, batch ≤50 products | Migrate to BullMQ + Upstash Redis |
 | Storage growth (free: 500MB) | Daily rollup + 7-day raw snapshot retention | Upgrade Supabase or tune retention |
-| eBay rate limit (5,000 calls/day) | Batch processing, only poll wishlisted items | Per-vendor queues with rate limiters |
-| Vercel API timeout (10s free) | 7s ceiling timeout, return partial results | Upgrade to Pro or use background jobs |
+| CheapShark rate limit (no hard limit, be polite) | Max 1 req/sec, only poll wishlisted items | Per-vendor queues when adding paid vendors |
+| Railway response timeout | 7s ceiling timeout, return partial results | Upgrade Railway plan or use background jobs |
 | In-memory rate limiting resets | Acceptable for MVP | Replace with Upstash Rate Limiting |
 | Supabase connection pool (60 free) | PostgREST client in edge functions | Connection pooler (PgBouncer via Supabase) |
 | Auth migration | Full provider facade from day one | Swap lib/auth/providers/supabase.ts |
@@ -500,16 +569,27 @@ deploy-production:
 
 **Environment variable rules:**
 - `RAILWAY_TOKEN` — set in GitLab CI/CD Variables (masked + protected). Used by the pipeline to authenticate Railway deploys.
-- All app secrets (`EBAY_CLIENT_ID`, `SUPABASE_SERVICE_ROLE_KEY`, etc.) — set in Railway dashboard under the service's Variables tab. Railway injects them at runtime. They never touch GitLab.
+- All app secrets (`SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, etc.) — set in Railway dashboard under the service's Variables tab. Railway injects them at runtime. They never touch GitLab.
+- CheapShark requires no credentials — no env var needed.
 
 ---
 
-## eBay API Authentication Notes
-eBay uses OAuth 2.0 client credentials (not a single API key). The flow is:
-1. Base64-encode `CLIENT_ID:CLIENT_SECRET`
-2. POST to `https://api.ebay.com/identity/v1/oauth2/token` with `grant_type=client_credentials` and scope `https://api.ebay.com/oauth/api_scope/buy.item.summary`
-3. Response contains `access_token` valid for 2 hours
-4. Attach as `Authorization: Bearer <token>` on all Browse API calls
-5. Cache the token in memory and refresh when expired — don't fetch a new token per request
+## CheapShark API Notes
 
-This token management is handled inside `vendors/adapters/ebay.ts` transparently. The rest of the app never sees it.
+No authentication. No rate limit documented, but be a good citizen: cap at 1 request/second in the polling job. All requests are plain `fetch()` GET calls.
+
+**Store ID reference** (used to map `storeID` in deal responses to human-readable store names):
+| storeID | Name |
+|---|---|
+| 1 | Steam |
+| 2 | GamersGate |
+| 3 | Green Man Gaming |
+| 7 | GOG |
+| 8 | Origin / EA App |
+| 11 | Humble Store |
+| 13 | Ubisoft Connect |
+| 15 | Fanatical |
+| 25 | Epic Games Store |
+| 27 | Games Planet |
+
+Fetch the full list at runtime with `GET /stores` and cache it — the store list rarely changes.

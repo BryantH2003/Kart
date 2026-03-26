@@ -1,36 +1,59 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-/node_modules
-/.pnp
+# ── Dependencies ──────────────────────────────────────────────────────────────
+node_modules/
+.pnp
 .pnp.js
 
-# testing
-/coverage
+# ── Build output ───────────────────────────────────────────────────────────────
+.next/
+out/
+build/
+dist/
 
-# next.js
-/.next/
-/out/
+# ── Environment files ─────────────────────────────────────────────────────────
+# .env.example is safe to commit (it has no real values — it's a template)
+.env
+.env.local
+.env.*.local
 
-# production
-/build
+# ── Supabase ──────────────────────────────────────────────────────────────────
+# .temp — CLI state written by `supabase link` (project ref, versions, etc.)
+# .branches — local branch switching state
+# Neither is useful to other developers or CI
+supabase/.temp/
+supabase/.branches/
 
-# misc
-.DS_Store
-*.pem
+# Migration files and functions ARE committed — they are schema history
+# Do NOT add supabase/migrations/ or supabase/functions/ here
 
-# debug
+# ── Hosting / deployment ──────────────────────────────────────────────────────
+.vercel/
+.railway/
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# local env files
-.env*.local
-.env
+# ── Testing ───────────────────────────────────────────────────────────────────
+coverage/
 
-# vercel
-.vercel
-
-# typescript
+# ── TypeScript ────────────────────────────────────────────────────────────────
 *.tsbuildinfo
 next-env.d.ts
+# src/types/database.types.ts is committed — it enables CI type checking
+# without requiring every developer to have the Supabase CLI installed
+
+# ── OS / editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.pem
+.idea/
+*.swp
+*.swo
+
+# ── Claude Code internals ─────────────────────────────────────────────────────
+# .agents/ and skills-lock.json are created by the Claude Code CLI
+# They are editor state, not project code
+.agents/
+skills-lock.json

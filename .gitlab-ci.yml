@@ -1,0 +1,41 @@
+stages:
+  - test
+  - deploy
+
+variables:
+  NODE_VERSION: "20"
+
+# ── Test stage ────────────────────────────────────────────────
+# Runs on every merge request and every push to main.
+# Catches TypeScript errors and lint issues before they reach production.
+lint-and-typecheck:
+  stage: test
+  image: node:${NODE_VERSION}-alpine
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - node_modules/
+  script:
+    - npm ci
+    - npm run lint
+    - npm run typecheck
+  only:
+    - merge_requests
+    - main
+
+# ── Deploy stage ──────────────────────────────────────────────
+# Runs only on pushes to main.
+# Requires RAILWAY_TOKEN to be set in GitLab CI/CD Variables (masked + protected).
+# All app secrets (EBAY_CLIENT_ID, SUPABASE keys, etc.) are stored in Railway dashboard,
+# not here — Railway injects them into the running app at runtime.
+deploy-production:
+  stage: deploy
+  image: node:${NODE_VERSION}-alpine
+  script:
+    - npm install -g @railway/cli
+    - railway up --service kart --detach
+  environment:
+    name: production
+    url: https://your-app.railway.app   # update this once Railway assigns your URL
+  only:
+    - main

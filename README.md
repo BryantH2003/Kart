@@ -23,7 +23,7 @@ Search and product pages are publicly accessible. Wishlist and alerts require an
 | Database | Supabase PostgreSQL |
 | Auth | Supabase Auth (email/password + Google OAuth) |
 | Background jobs | Supabase pg_cron + Edge Functions |
-| Vendors (MVP) | eBay Browse API |
+| Vendors (MVP) | CheapShark API (free, no key required) |
 | Email alerts | Resend |
 | AI recommendations | Groq (Llama 3 8B) |
 | Source control | GitLab |
@@ -64,12 +64,11 @@ Required variables:
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-EBAY_CLIENT_ID=
-EBAY_CLIENT_SECRET=
 RESEND_API_KEY=
 RESEND_FROM_EMAIL=
 UNSUBSCRIBE_SECRET=
 GROQ_API_KEY=
+# CheapShark requires no API key
 ```
 
 ### Database Setup
@@ -91,7 +90,7 @@ npm run dev
 
 ```bash
 supabase functions deploy poll-prices
-supabase secrets set BESTBUY_API_KEY=... RESEND_API_KEY=... GROQ_API_KEY=...
+supabase secrets set RESEND_API_KEY=... GROQ_API_KEY=... SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
 ## Project Status
@@ -110,7 +109,7 @@ Pushes to `main` trigger the GitLab CI/CD pipeline (`.gitlab-ci.yml`), which:
 - [ ] Phase 0 — External service setup
 - [ ] Phase 1 — Database schema + migrations
 - [ ] Phase 2 — Project scaffold
-- [ ] Phase 3 — Vendor adapter layer (Best Buy)
+- [ ] Phase 3 — Vendor adapter layer (CheapShark)
 - [ ] Phase 4 — Repositories
 - [ ] Phase 5 — Services
 - [ ] Phase 6 — API routes
