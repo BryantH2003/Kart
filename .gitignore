@@ -10,7 +10,6 @@ build/
 dist/
 
 # ── Environment files ─────────────────────────────────────────────────────────
-# .env.example is safe to commit (it has no real values — it's a template)
 .env
 .env.local
 .env.*.local
@@ -25,7 +24,8 @@ supabase/.branches/
 # Migration files and functions ARE committed — they are schema history
 # Do NOT add supabase/migrations/ or supabase/functions/ here
 
-# scripts/ IS committed — setup-cron-jobs.sql uses <PLACEHOLDER> values only, no real secrets
+# scripts/ contains setup files that will hold real secrets after placeholder substitution
+scripts/
 
 # ── Hosting / deployment ──────────────────────────────────────────────────────
 .vercel/
