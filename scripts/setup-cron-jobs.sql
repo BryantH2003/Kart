@@ -1,20 +1,19 @@
 -- scripts/setup-cron-jobs.sql
 -- Manual setup script for pg_cron jobs.
--- Run this ONCE against your Supabase project after:
---   1. Enabling pg_cron and pg_net extensions in Dashboard → Database → Extensions
---   2. Deploying the poll-prices Edge Function: supabase functions deploy poll-prices
---   3. Setting the cron secret: supabase secrets set CRON_SECRET=$(openssl rand -hex 32)
---      (Copy the generated secret — you'll also add it to .env.local as CRON_SECRET=)
+-- DO NOT run this file directly — use scripts/run-cron-setup.sh instead.
+-- That script reads .env.local and substitutes ${CRON_SECRET} and ${SUPABASE_PROJECT_ID}
+-- before executing, so secrets are never hardcoded here.
 --
--- Replace <PROJECT_REF> with your Supabase project reference ID before running.
--- Find it in: Dashboard → Project Settings → General → Reference ID
+-- Prerequisites (one-time):
+--   1. Enable pg_cron and pg_net in Dashboard → Database → Extensions
+--   2. Deploy the Edge Function: supabase functions deploy poll-prices
+--   3. Generate and set the cron secret:
+--        openssl rand -hex 32        # copy the output
+--        Add CRON_SECRET=<output> to .env.local
+--        supabase secrets set CRON_SECRET=<output>
 --
--- Run with:
---   supabase db execute --file scripts/setup-cron-jobs.sql
--- Or paste into the Supabase SQL editor.
---
--- SECURITY NOTE: This file uses a CRON_SECRET (not the service role key).
--- The Edge Function verifies this secret. Never put the service role key in a cron job.
+-- SECURITY NOTE: CRON_SECRET is a dedicated secret for cron auth (not the service role key).
+-- The Edge Function verifies this value. The service role key must never appear in cron jobs.
 
 -- ── 1. Hourly price polling ───────────────────────────────────────────────────
 -- Calls the poll-prices Edge Function via pg_net every hour.
@@ -27,10 +26,10 @@ SELECT cron.schedule(
   '0 * * * *',
   $$
   SELECT net.http_post(
-    url     := 'https://<PROJECT_REF>.supabase.co/functions/v1/poll-prices',
+    url     := 'https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/poll-prices',
     headers := jsonb_build_object(
       'Content-Type',  'application/json',
-      'Authorization', 'Bearer <CRON_SECRET>'
+      'Authorization', 'Bearer ${CRON_SECRET}'
     ),
     body    := '{}'::jsonb
   );

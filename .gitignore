@@ -24,8 +24,7 @@ supabase/.branches/
 # Migration files and functions ARE committed — they are schema history
 # Do NOT add supabase/migrations/ or supabase/functions/ here
 
-# scripts/ contains setup files that will hold real secrets after placeholder substitution
-scripts/
+# scripts/ IS committed — secrets are substituted at runtime from .env.local, never hardcoded
 
 # ── Hosting / deployment ──────────────────────────────────────────────────────
 .vercel/
