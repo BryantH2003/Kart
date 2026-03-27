@@ -1,4 +1,4 @@
--- 004_seed_vendors.sql
+-- 003_seed_vendors.sql
 -- Seed the vendors table with CheapShark as the data source and each major
 -- storefront it aggregates. storeId values map to CheapShark's internal store IDs
 -- returned in deal responses.

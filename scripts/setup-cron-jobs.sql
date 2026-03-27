@@ -66,5 +66,10 @@ SELECT cron.schedule(
   -- Clear expired search cache (30-min TTL)
   DELETE FROM search_cache
   WHERE cached_at < now() - INTERVAL '30 minutes';
+
+  -- Purge old alert records (90-day retention)
+  -- alerts_sent has no natural expiry — without this it grows indefinitely.
+  DELETE FROM alerts_sent
+  WHERE sent_at < now() - INTERVAL '90 days';
   $$
 );

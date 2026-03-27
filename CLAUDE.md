@@ -3,6 +3,25 @@
 These rules apply to every prompt, every file, and every phase of this project.
 Read them before making any change.
 
+## Maintaining DECISIONS.md
+
+`DECISIONS.md` is an engineering journal that tells the story of technical problems encountered and how they were solved. It is read by the project owner when preparing for interviews and by any collaborator trying to understand why the codebase looks the way it does.
+
+**Update DECISIONS.md whenever any of the following happens:**
+- A non-obvious architectural decision is made (e.g. choosing pattern A over pattern B)
+- A design problem is discovered and resolved (e.g. a missing index, a schema assumption that breaks under a new vendor)
+- A constraint or external service causes a pivot (e.g. an API being inaccessible, a tool not supporting a required feature)
+- A rule is added to this file that required a real incident or problem to justify
+
+**How to write an entry:**
+1. Give it a short numbered title that names the problem, not the solution
+2. Open with the problem in plain language — what broke or what risk was identified
+3. Describe what options were on the table and why the rejected ones were ruled out
+4. State the decision and the trade-offs accepted
+5. Close with the general principle or rule that came out of it, if one exists
+
+Do not log routine implementation work (adding a component, writing a query). Only log decisions where the reasoning is non-obvious or where future readers might wonder "why did they do it this way?"
+
 ---
 
 ## Architecture
@@ -20,9 +39,37 @@ All vendor API calls go through a `VendorAdapter` implementation in `src/vendors
 
 ---
 
-## Database
+## Database Schema Optimization
 
-### Every schema change = new migration file
+When creating or modifying any table, proactively evaluate all of the following before finalizing the migration. Do not wait to be asked.
+
+### PostgreSQL never auto-indexes foreign key columns
+Every FK column (`REFERENCES ...`) needs an explicit `CREATE INDEX` unless the table has fewer than a few hundred rows ever. Missing FK indexes cause full table scans on joins. Check every FK when writing a migration.
+
+### Identify the real access pattern before choosing a primary key
+If a table's natural key (e.g., `(vendor_product_id, date)`) covers 100% of queries, use it as the PK directly. A UUID surrogate PK that is never queried by external code just adds a second index with no benefit. Use UUID PKs where the ID is exposed externally (API responses, URL params) or where there is no natural key.
+
+### Append-only tables need a standalone timestamp index for cleanup jobs
+Any table with a `recorded_at` / `cached_at` / `sent_at` / `created_at` column that has a planned DELETE-by-age job needs a standalone index on that timestamp column. A composite index with another leading column cannot efficiently serve a bulk delete across all rows older than a threshold.
+
+### Every table with unbounded growth needs a retention policy
+Before finalizing a migration, ask: does this table grow forever? If yes, define a retention window and add a cleanup job to `scripts/setup-cron-jobs.sql`. Current retention policies:
+- `price_snapshots` — 7 days (raw hourly data rolled up nightly)
+- `search_cache` — 30 minutes (TTL)
+- `alerts_sent` — 90 days
+
+### Suggest a composite index for any multi-column WHERE clause on a hot path
+If a service or repository will query `WHERE col_a = $1 AND col_b = $2 ORDER BY col_c DESC`, that needs a composite index `(col_a, col_b, col_c DESC)`. Columns in equality predicates go first, range/sort columns go last.
+
+### Partial indexes for known-filtered queries
+If a query always filters on a low-cardinality boolean (e.g., `WHERE enabled = true`, `WHERE availability = 'in_stock'`), a partial index reduces index size and speeds up scans.
+
+### Note scale assumptions in migration comments
+Comment why each index exists and what query it serves. If an index is deferred because the table is small, note the threshold at which it should be added.
+
+---
+
+## Database
 Never use the Supabase dashboard to change schema. Every change gets a new file in `supabase/migrations/` with the next sequential number. After pushing: regenerate types with `supabase gen types typescript --project-id <ref> > src/types/database.types.ts`.
 
 ### Never edit `src/types/database.types.ts` manually
@@ -100,6 +147,36 @@ No `.env.example`. Secrets are documented in PLAN.md under Environment Variables
 
 ### `supabase/.temp/` and `supabase/.branches/` are gitignored
 These contain local CLI state. Never commit them.
+
+---
+
+## Vendor Extensibility
+
+These rules exist so adding a new vendor never requires schema changes.
+
+### vendor_type drives adapter behavior — never branch on vendor ID
+When adapter or service logic needs to behave differently for an aggregator vs. a retailer vs. a marketplace, read `vendor_type` from the `vendors` table. Never write `if vendorId === 'cheapshark'` in application code.
+
+### Every new product category uses external_id_type to namespace its identifier
+`canonical_products.external_id` is only unique within its type. A Steam App ID "8930" and a UPC "000008930..." are different things. Always set `external_id_type` when creating a canonical product. Known types: `steam_app_id`, `upc`, `gtin`, `asin`, `isbn`.
+
+### Vendor-specific product data goes in vendor_products.metadata JSONB — not new columns
+If a vendor returns extra product fields (eBay seller condition, Amazon model number, Steam genres), store them in `vendor_products.metadata`. Do not add new columns to `vendor_products` for vendor-specific data. New columns are only justified if the field is universal across all vendors.
+
+### Same rule applies to canonical_products.metadata for category-specific fields
+Fields that only make sense for one product category (e.g. `release_date`, `metacritic_score` for games) can go in `metadata` when introduced. Columns in the main table are for fields present across all product categories.
+
+### Soft-delete vendor_products with is_active = false — never DELETE
+When a listing ends (eBay sold, SKU discontinued, game delisted), set `is_active = false`. Do not delete the row. Price history (`price_snapshots`, `price_history_daily`) must be preserved for the history chart to remain accurate. The polling job skips `is_active = false` rows automatically.
+
+### Always update sync_status and sync_error after each poll attempt
+On success: `sync_status = 'success', sync_error = null`. On failure: `sync_status = 'error', sync_error = <message>`. This is the only observability signal for diagnosing stale data or failing vendor APIs.
+
+### The availability CHECK constraint covers: in_stock, out_of_stock, limited, pre_order
+Adapters normalize vendor-specific availability strings to these four values. If a new state genuinely doesn't fit, extend the CHECK constraint in a new migration — do not stuff unrecognized values into an existing value.
+
+### store_prices JSONB works for all vendor types
+For aggregators (CheapShark): an array of per-store prices. For single-store retailers (Steam, Best Buy): a single-item array. For marketplaces (eBay): one entry per seller listing. The frontend renders whatever is in the array. Adapters are responsible for populating it correctly.
 
 ---
 

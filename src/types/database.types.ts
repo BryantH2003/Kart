@@ -52,9 +52,11 @@ export type Database = {
           category: string | null
           created_at: string | null
           external_id: string | null
+          external_id_type: string | null
           id: string
           image_url: string | null
           metacritic_score: number | null
+          metadata: Json | null
           name: string
           release_date: string | null
         }
@@ -63,9 +65,11 @@ export type Database = {
           category?: string | null
           created_at?: string | null
           external_id?: string | null
+          external_id_type?: string | null
           id?: string
           image_url?: string | null
           metacritic_score?: number | null
+          metadata?: Json | null
           name: string
           release_date?: string | null
         }
@@ -74,9 +78,11 @@ export type Database = {
           category?: string | null
           created_at?: string | null
           external_id?: string | null
+          external_id_type?: string | null
           id?: string
           image_url?: string | null
           metacritic_score?: number | null
+          metadata?: Json | null
           name?: string
           release_date?: string | null
         }
@@ -85,27 +91,24 @@ export type Database = {
       price_history_daily: {
         Row: {
           date: string
-          id: string
           price_avg: number | null
           price_max: number | null
           price_min: number | null
-          vendor_product_id: string | null
+          vendor_product_id: string
         }
         Insert: {
           date: string
-          id?: string
           price_avg?: number | null
           price_max?: number | null
           price_min?: number | null
-          vendor_product_id?: string | null
+          vendor_product_id: string
         }
         Update: {
           date?: string
-          id?: string
           price_avg?: number | null
           price_max?: number | null
           price_min?: number | null
-          vendor_product_id?: string | null
+          vendor_product_id?: string
         }
         Relationships: [
           {
@@ -186,24 +189,36 @@ export type Database = {
         Row: {
           canonical_id: string | null
           id: string
+          is_active: boolean
           last_synced: string | null
+          metadata: Json | null
           product_url: string | null
+          sync_error: string | null
+          sync_status: string
           vendor_id: string | null
           vendor_product_id: string
         }
         Insert: {
           canonical_id?: string | null
           id?: string
+          is_active?: boolean
           last_synced?: string | null
+          metadata?: Json | null
           product_url?: string | null
+          sync_error?: string | null
+          sync_status?: string
           vendor_id?: string | null
           vendor_product_id: string
         }
         Update: {
           canonical_id?: string | null
           id?: string
+          is_active?: boolean
           last_synced?: string | null
+          metadata?: Json | null
           product_url?: string | null
+          sync_error?: string | null
+          sync_status?: string
           vendor_id?: string | null
           vendor_product_id?: string
         }
@@ -230,18 +245,21 @@ export type Database = {
           enabled: boolean | null
           id: string
           name: string
+          vendor_type: string
         }
         Insert: {
           config?: Json | null
           enabled?: boolean | null
           id: string
           name: string
+          vendor_type?: string
         }
         Update: {
           config?: Json | null
           enabled?: boolean | null
           id?: string
           name?: string
+          vendor_type?: string
         }
         Relationships: []
       }
