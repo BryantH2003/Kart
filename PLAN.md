@@ -1,5 +1,23 @@
 # Kart — Implementation Plan
 
+## Progress
+
+| Phase | Status | Notes |
+|---|---|---|
+| 0 — External service setup | ✅ Complete | Supabase, Resend, Groq, Railway, GitLab all configured |
+| 1 — Database | ✅ Complete | 5 migrations applied; types generated |
+| 2 — Project scaffold | ✅ Complete | Next.js 16, shadcn/ui, all lib files, middleware, Zod schemas |
+| 3 — Vendor adapter layer | 🔜 Next | CheapShark adapter + registry |
+| 4 — Repositories | ⬜ Pending | |
+| 5 — Services | ⬜ Pending | |
+| 6 — API routes | ⬜ Pending | |
+| 7 — Edge function + pg_cron | ⬜ Pending | |
+| 8 — Frontend | ⬜ Pending | |
+
+**Resume point:** Begin Phase 3 — create `src/vendors/types.ts`, `src/vendors/adapters/cheapshark.ts`, `src/vendors/registry.ts`.
+
+---
+
 ## Context
 Building a deal-finder web app ("Kart") that helps users make informed purchase decisions. Users search for products, view cross-vendor price comparisons and history, add items to a wishlist, set price drop alerts, and get AI-powered buy/wait recommendations. MVP uses CheapShark as the data source — a free, no-key API that aggregates PC game prices across Steam, GOG, Green Man Gaming, Humble Store, and 15+ other storefronts. This naturally demonstrates the multi-store comparison feature that is Kart's core value. The vendor adapter architecture allows new vendors (eBay, Best Buy, etc.) to be added later by writing one adapter file.
 
@@ -41,154 +59,169 @@ Auth is required only for wishlist and alerts. Search and product pages are publ
 kart/
 ├── src/
 │   ├── app/                              # Next.js App Router pages (views only)
-│   │   ├── layout.tsx
-│   │   ├── page.tsx                      # Landing + search bar
-│   │   ├── search/page.tsx               # Search results grid
-│   │   ├── product/[id]/page.tsx         # Product detail, comparison, chart
-│   │   ├── wishlist/page.tsx             # Auth-gated tracked items
+│   │   ├── globals.css
+│   │   ├── layout.tsx                    # ✅ Root layout with metadata + Toaster
+│   │   ├── page.tsx                      # ✅ Placeholder — full landing in Phase 8
+│   │   ├── search/page.tsx               # ⬜ Phase 8
+│   │   ├── product/[id]/page.tsx         # ⬜ Phase 8
+│   │   ├── wishlist/page.tsx             # ⬜ Phase 8
 │   │   └── auth/
-│   │       ├── login/page.tsx
-│   │       └── callback/route.ts         # Supabase OAuth callback
+│   │       ├── login/page.tsx            # ⬜ Phase 8
+│   │       └── callback/route.ts         # ⬜ Phase 8
 │   │
 │   ├── app/api/                          # Controllers (thin: parse, validate, delegate)
-│   │   ├── search/route.ts               # GET ?q=
-│   │   ├── products/[id]/route.ts        # GET canonical product + vendor prices
-│   │   ├── wishlist/
-│   │   │   ├── route.ts                  # GET list, POST add
-│   │   │   └── [id]/route.ts             # DELETE, PATCH target_price
-│   │   ├── alerts/route.ts               # POST set alert, DELETE remove
-│   │   ├── unsubscribe/route.ts          # GET (HMAC token verified, CAN-SPAM compliant)
-│   │   └── ai/
-│   │       └── recommend/route.ts        # POST → Groq recommendation
+│   │   ├── search/route.ts               # ⬜ Phase 6
+│   │   ├── products/[id]/route.ts        # ⬜ Phase 6
+│   │   ├── wishlist/route.ts             # ⬜ Phase 6
+│   │   ├── wishlist/[id]/route.ts        # ⬜ Phase 6
+│   │   ├── alerts/route.ts               # ⬜ Phase 6
+│   │   ├── unsubscribe/route.ts          # ⬜ Phase 6
+│   │   └── ai/recommend/route.ts         # ⬜ Phase 6
 │   │
-│   ├── services/                         # Business logic (no HTTP, no raw SQL)
-│   │   ├── search.service.ts             # Cache check → fan-out → deduplicate → persist
-│   │   ├── product.service.ts            # Assemble product page data
-│   │   ├── wishlist.service.ts           # Add/remove, ownership validation
-│   │   ├── alert.service.ts              # Threshold check + Resend dispatch
-│   │   ├── matching.service.ts           # UPC-based deduplication across vendors
-│   │   └── recommendation.service.ts     # Groq API call + rule-based fallback
-│   │
-│   ├── repositories/                     # Data access (Supabase queries only)
-│   │   ├── product.repository.ts         # canonical_products + vendor_products
-│   │   ├── price.repository.ts           # price_snapshots + price_history_daily
-│   │   ├── wishlist.repository.ts        # wishlists table
-│   │   └── cache.repository.ts           # search_cache table
+│   ├── services/                         # ⬜ Phase 5 — business logic
+│   ├── repositories/                     # ⬜ Phase 4 — Supabase queries only
 │   │
 │   ├── vendors/                          # Vendor adapter layer
-│   │   ├── types.ts                      # VendorAdapter interface, VendorProduct type
-│   │   ├── registry.ts                   # ONLY file that changes when adding a vendor
+│   │   ├── types.ts                      # ⬜ Phase 3
+│   │   ├── registry.ts                   # ⬜ Phase 3
 │   │   └── adapters/
-│   │       └── cheapshark.ts
+│   │       └── cheapshark.ts             # ⬜ Phase 3
 │   │
 │   ├── lib/
 │   │   ├── auth/
-│   │   │   ├── index.ts                  # Auth facade (AuthProvider interface)
+│   │   │   ├── index.ts                  # ✅ Auth facade
 │   │   │   └── providers/
-│   │   │       └── supabase.ts           # Supabase implementation (only file touching supabase.auth)
+│   │   │       └── supabase.ts           # ✅ Only file touching supabase.auth
 │   │   ├── supabase/
-│   │   │   ├── client.ts                 # Browser Supabase client
-│   │   │   └── server.ts                 # Server client + createAdminClient()
-│   │   ├── groq.ts                       # Groq client setup
-│   │   ├── resend.ts                     # Resend client setup
-│   │   └── middleware.ts                 # IP rate limiting logic
+│   │   │   ├── client.ts                 # ✅ Browser client
+│   │   │   └── server.ts                 # ✅ Server client + createAdminClient()
+│   │   ├── groq.ts                       # ✅
+│   │   ├── resend.ts                     # ✅
+│   │   ├── utils.ts                      # ✅ shadcn cn() helper
+│   │   └── middleware.ts                 # ✅ Rate limiting + session refresh
 │   │
-│   ├── schemas/                          # Zod validation (shared across controllers)
+│   ├── schemas/                          # ✅ Zod schemas
 │   │   ├── search.schema.ts
 │   │   ├── wishlist.schema.ts
 │   │   └── alert.schema.ts
 │   │
 │   ├── types/
-│   │   ├── database.types.ts             # Auto-generated by Supabase CLI (never edit manually)
-│   │   └── api.types.ts                  # Request/response shapes
+│   │   ├── database.types.ts             # ✅ Auto-generated — never edit manually
+│   │   └── api.types.ts                  # ✅ Request/response shapes
 │   │
 │   └── components/
-│       ├── ui/                           # shadcn generated (do not edit manually)
-│       ├── search-bar.tsx
-│       ├── product-card.tsx
-│       ├── price-history-chart.tsx       # Recharts via shadcn Chart
-│       ├── vendor-comparison-table.tsx
-│       └── wishlist-button.tsx
+│       ├── ui/                           # ✅ shadcn components — never edit manually
+│       ├── search-bar.tsx                # ⬜ Phase 8
+│       ├── product-card.tsx              # ⬜ Phase 8
+│       ├── price-history-chart.tsx       # ⬜ Phase 8
+│       ├── vendor-comparison-table.tsx   # ⬜ Phase 8
+│       └── wishlist-button.tsx           # ⬜ Phase 8
 │
 ├── supabase/
 │   ├── migrations/
-│   │   ├── 001_initial_schema.sql        # All tables + indexes
-│   │   ├── 002_rls_policies.sql          # RLS as SQL (never dashboard config)
-│   │   └── 003_seed_vendors.sql          # Vendor rows (CheapShark + storefronts)
-│   │   # NOTE: cron job setup is NOT a migration — see scripts/setup-cron-jobs.sql
+│   │   ├── 001_initial_schema.sql        # ✅ All tables
+│   │   ├── 002_rls_policies.sql          # ✅ RLS as SQL
+│   │   ├── 003_seed_vendors.sql          # ✅ Vendor rows
+│   │   ├── 004_indexes_and_optimizations.sql  # ✅ FK indexes, PK restructure
+│   │   └── 005_vendor_extensibility.sql  # ✅ vendor_type, metadata, is_active, sync_status
 │   └── functions/
-│       └── poll-prices/
-│           └── index.ts                  # Self-contained Deno edge function
+│       └── poll-prices/index.ts          # ⬜ Phase 7 — Deno edge function
 │
-├── middleware.ts                         # Next.js middleware (rate limiting)
-├── next.config.ts                        # Security headers + image remotePatterns
+├── scripts/
+│   ├── setup-cron-jobs.sql               # ✅ Cron job template (uses ${VAR} placeholders)
+│   └── run-cron-setup.sh                 # ✅ Reads .env.local, substitutes, executes
+│
+├── middleware.ts                         # ✅ Next.js middleware entry point
+├── next.config.ts                        # ✅ Security headers + image remotePatterns
+├── components.json                       # ✅ shadcn config
+├── .gitlab-ci.yml                        # ✅ lint+typecheck → Railway deploy pipeline
 ├── PLAN.md                               # This file
-└── .env.local
+├── DECISIONS.md                          # Engineering decisions journal
+├── CLAUDE.md                             # Project rules (auto-loaded by Claude Code)
+└── .env.local                            # Never committed — see README for required vars
 ```
 
 ---
 
 ## Database Schema
 
-### `001_initial_schema.sql`
+### Current schema (after all 5 migrations)
+
 ```sql
+-- vendors
 CREATE TABLE vendors (
-  id      TEXT PRIMARY KEY,
-  name    TEXT NOT NULL,
-  enabled BOOLEAN DEFAULT true,
-  config  JSONB
-);
-
-CREATE TABLE canonical_products (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  external_id TEXT UNIQUE,     -- steamAppID for games, UPC for physical goods, etc.
+  id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
-  brand       TEXT,
-  category    TEXT,
-  image_url   TEXT,
-  created_at  TIMESTAMPTZ DEFAULT now()
+  enabled     BOOLEAN DEFAULT true,
+  vendor_type TEXT NOT NULL DEFAULT 'retailer'   -- 'aggregator' | 'retailer' | 'marketplace'
+              CHECK (vendor_type IN ('aggregator', 'retailer', 'marketplace')),
+  config      JSONB
 );
 
+-- canonical_products
+CREATE TABLE canonical_products (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  external_id      TEXT,                  -- universal ID within its type namespace
+  external_id_type TEXT,                  -- 'steam_app_id' | 'upc' | 'gtin' | 'asin' | 'isbn'
+  -- UNIQUE(external_id_type, external_id) WHERE both NOT NULL (partial composite index)
+  name             TEXT NOT NULL,
+  brand            TEXT,
+  category         TEXT,
+  image_url        TEXT,
+  release_date     TIMESTAMPTZ,           -- games: from CheapShark releaseDate (Unix ts)
+  metacritic_score INT,                   -- games: 0 = unscored
+  metadata         JSONB,                 -- category-specific extras (genres, dimensions, etc.)
+  created_at       TIMESTAMPTZ DEFAULT now()
+);
+
+-- vendor_products
 CREATE TABLE vendor_products (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   canonical_id      UUID REFERENCES canonical_products ON DELETE CASCADE,
   vendor_id         TEXT REFERENCES vendors,
-  vendor_product_id TEXT NOT NULL,
+  vendor_product_id TEXT NOT NULL,        -- vendor's internal ID (gameID, ASIN, SKU, etc.)
   product_url       TEXT,
   last_synced       TIMESTAMPTZ,
+  is_active         BOOLEAN NOT NULL DEFAULT true,     -- false = soft-deleted (listing ended)
+  sync_status       TEXT NOT NULL DEFAULT 'pending'    -- 'pending'|'success'|'error'|'skipped'
+                    CHECK (sync_status IN ('pending', 'success', 'error', 'skipped')),
+  sync_error        TEXT,                -- last error message; null on success
+  metadata          JSONB,               -- vendor-specific static data (condition, seller, etc.)
   UNIQUE(vendor_id, vendor_product_id)
 );
 
+-- price_snapshots (hourly, purged after 7 days)
 CREATE TABLE price_snapshots (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   vendor_product_id UUID REFERENCES vendor_products ON DELETE CASCADE,
-  price             NUMERIC(10,2) NOT NULL,   -- cheapest price across all stores
-  original_price    NUMERIC(10,2),            -- normal/non-sale price
-  availability      TEXT CHECK (availability IN ('in_stock','out_of_stock','limited')),
-  rating            NUMERIC(3,1),
+  price             NUMERIC(10,2) NOT NULL,
+  original_price    NUMERIC(10,2),
+  availability      TEXT CHECK (availability IN ('in_stock','out_of_stock','limited','pre_order')),
+  rating            NUMERIC(3,1),        -- normalized 0–10 scale across all vendors
+  rating_text       TEXT,                -- human-readable label (e.g. "Overwhelmingly Positive")
   review_count      INT,
-  store_prices      JSONB,                    -- per-store breakdown: [{storeName, price, dealUrl}]
+  store_prices      JSONB,               -- [{storeName, storeId, price, dealUrl}]
   recorded_at       TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX idx_snapshots_vendor_product ON price_snapshots(vendor_product_id, recorded_at DESC);
-
+-- price_history_daily (permanent — rolled up nightly from snapshots)
 CREATE TABLE price_history_daily (
-  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   vendor_product_id UUID REFERENCES vendor_products ON DELETE CASCADE,
   date              DATE NOT NULL,
   price_min         NUMERIC(10,2),
   price_max         NUMERIC(10,2),
   price_avg         NUMERIC(10,2),
-  UNIQUE(vendor_product_id, date)
+  PRIMARY KEY (vendor_product_id, date)  -- natural composite PK, no surrogate UUID
 );
 
+-- search_cache (30-min TTL)
 CREATE TABLE search_cache (
-  query_hash  TEXT PRIMARY KEY,
-  results     JSONB NOT NULL,
-  cached_at   TIMESTAMPTZ DEFAULT now()
+  query_hash TEXT PRIMARY KEY,
+  results    JSONB NOT NULL,
+  cached_at  TIMESTAMPTZ DEFAULT now()
 );
 
+-- wishlists
 CREATE TABLE wishlists (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id      UUID REFERENCES auth.users ON DELETE CASCADE,
@@ -198,6 +231,7 @@ CREATE TABLE wishlists (
   UNIQUE(user_id, canonical_id)
 );
 
+-- alerts_sent (90-day retention via cron)
 CREATE TABLE alerts_sent (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id           UUID REFERENCES auth.users,
@@ -207,31 +241,14 @@ CREATE TABLE alerts_sent (
 );
 ```
 
-### `002_rls_policies.sql`
-```sql
-ALTER TABLE wishlists ENABLE ROW LEVEL SECURITY;
-ALTER TABLE alerts_sent ENABLE ROW LEVEL SECURITY;
-ALTER TABLE canonical_products ENABLE ROW LEVEL SECURITY;
-ALTER TABLE vendor_products ENABLE ROW LEVEL SECURITY;
-ALTER TABLE price_snapshots ENABLE ROW LEVEL SECURITY;
-ALTER TABLE price_history_daily ENABLE ROW LEVEL SECURITY;
-ALTER TABLE search_cache ENABLE ROW LEVEL SECURITY;
-ALTER TABLE vendors ENABLE ROW LEVEL SECURITY;
-
--- Wishlists: owner full CRUD
-CREATE POLICY "wishlist_select" ON wishlists FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "wishlist_insert" ON wishlists FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "wishlist_update" ON wishlists FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "wishlist_delete" ON wishlists FOR DELETE USING (auth.uid() = user_id);
--- Alerts: read-only for owner
-CREATE POLICY "alerts_select" ON alerts_sent FOR SELECT USING (auth.uid() = user_id);
--- Public catalog: anyone reads, only service role writes
-CREATE POLICY "canonical_read" ON canonical_products FOR SELECT USING (true);
-CREATE POLICY "vendor_products_read" ON vendor_products FOR SELECT USING (true);
-CREATE POLICY "snapshots_read" ON price_snapshots FOR SELECT USING (true);
-CREATE POLICY "history_read" ON price_history_daily FOR SELECT USING (true);
--- No INSERT/UPDATE/DELETE on catalog tables = only service role can write
-```
+**Indexes (migration 004):**
+- `idx_vendor_products_canonical_id` — FK join for product page
+- `idx_vendor_products_last_synced NULLS FIRST` — polling queue ordering
+- `idx_price_snapshots_recorded_at` — nightly 7-day cleanup DELETE
+- `idx_search_cache_cached_at` — 30-min TTL cleanup DELETE
+- `idx_wishlists_canonical_id` — alert service "who wishlisted this product?"
+- `idx_alerts_sent_dedup (user_id, vendor_product_id, sent_at DESC)` — deduplication check
+- `idx_vendor_products_poll_queue (last_synced) WHERE is_active = true` — active product polling
 
 ---
 
@@ -288,36 +305,42 @@ Zero changes to services, repositories, API routes, or the frontend.
 6. **Google OAuth** — Supabase dashboard → Authentication → Providers → Google
 7. Populate `.env.local` (see Environment Variables section)
 
-### Phase 1 — Database
+### Phase 1 — Database ✅
 1. Install Supabase CLI, link project: `supabase link --project-ref <ref>`
-2. Create migration files (001–004), push: `supabase db push`
-3. Seed vendors table with CheapShark and each major store it aggregates:
-   ```sql
-   INSERT INTO vendors (id, name, enabled, config) VALUES
-     ('cheapshark',       'CheapShark',        true, '{"rateLimit": 1}'),
-     ('steam',            'Steam',              true, '{"storeId": "1"}'),
-     ('greenmangaming',   'Green Man Gaming',   true, '{"storeId": "2"}'),
-     ('gog',              'GOG',                true, '{"storeId": "7"}'),
-     ('humble',           'Humble Store',       true, '{"storeId": "11"}'),
-     ('fanatical',        'Fanatical',          true, '{"storeId": "15"}'),
-     ('epicgames',        'Epic Games Store',   true, '{"storeId": "25"}');
-   ```
-4. Generate types: `supabase gen types typescript --project-id <ref> > src/types/database.types.ts`
+2. Apply all 5 migrations: `supabase db push`
+3. Generate types: `supabase gen types typescript --project-id <ref> > src/types/database.types.ts`
+
+**Migration files:**
+| File | Contents |
+|---|---|
+| `001_initial_schema.sql` | All tables + indexes |
+| `002_rls_policies.sql` | RLS policies for all tables |
+| `003_seed_vendors.sql` | CheapShark + 7 storefronts seeded into vendors table |
+| `004_indexes_and_optimizations.sql` | Missing FK indexes, price_history_daily PK restructure, cleanup indexes |
+| `005_vendor_extensibility.sql` | vendor_type, external_id_type, metadata JSONB, is_active, sync_status, pre_order availability |
 
 **Rule:** Every schema change → new migration file → `supabase db push` → regenerate types. Never use the dashboard.
 
-### Phase 2 — Project Scaffold
-1. `npx create-next-app@latest kart --typescript --tailwind --app --src-dir`
-2. Add shadcn/ui: `npx shadcn@latest add button card command table chart dialog toast badge input label`
-3. Install: `npm install @supabase/supabase-js @supabase/ssr zod groq-sdk resend`
-4. Create `lib/supabase/client.ts`, `lib/supabase/server.ts`
-5. Create full auth facade: `lib/auth/index.ts` + `lib/auth/providers/supabase.ts`
-6. Configure `next.config.ts`: security headers + image `remotePatterns`:
-   - `cdn.akamai.steamstatic.com` (Steam game thumbnails via CheapShark)
-   - `www.cheapshark.com` (fallback thumbnails)
-7. Configure `middleware.ts`: IP rate limiting (20/min search, 30/min wishlist, 10/min alerts)
-8. Add `.gitlab-ci.yml` to project root (see CI/CD Pipeline section below)
-9. Add `"typecheck": "tsc --noEmit"` to `package.json` scripts (used by the lint stage)
+### Phase 2 — Project Scaffold ✅
+**What was built:**
+- Next.js 16 (App Router) + TypeScript + Tailwind CSS
+- shadcn/ui initialized via `components.json`; components added: `button`, `card`, `command`, `table`, `dialog`, `sonner`, `badge`, `input`, `label`, `chart`
+- Dependencies installed: `@supabase/supabase-js`, `@supabase/ssr`, `zod`, `groq-sdk`, `resend`, `class-variance-authority`, `clsx`, `tailwind-merge`
+- `src/lib/supabase/client.ts` — browser Supabase client
+- `src/lib/supabase/server.ts` — server client + `createAdminClient()`
+- `src/lib/auth/index.ts` + `src/lib/auth/providers/supabase.ts` — auth facade
+- `src/lib/groq.ts`, `src/lib/resend.ts`, `src/lib/utils.ts`
+- `src/lib/middleware.ts` — IP rate limiting + session refresh logic
+- `src/schemas/` — Zod schemas: `search.schema.ts`, `wishlist.schema.ts`, `alert.schema.ts`
+- `src/types/api.types.ts` — request/response type shapes
+- `next.config.ts` — security headers + Steam/CheapShark image remotePatterns
+- `middleware.ts` — Next.js middleware entry point (delegates to `src/lib/middleware.ts`)
+- `package.json` — `typecheck` script added
+- `CLAUDE.md` — project rules file (auto-loaded by Claude Code)
+- `DECISIONS.md` — engineering decisions journal
+- `.gitignore` — updated for Supabase local state, Railway, and Claude Code files
+
+**Note:** `create-next-app` was scaffolded to a temp directory and copied in due to the project directory name "Kart" containing a capital letter (npm naming restriction). Scaffolding directly with `.` fails.
 
 ### Phase 3 — Vendor Adapter Layer
 1. Create `vendors/types.ts` — `VendorAdapter` interface, `VendorProduct` type

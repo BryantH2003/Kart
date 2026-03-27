@@ -48,26 +48,25 @@ Each retailer is implemented as an adapter behind a common interface. Adding a n
 See [PLAN.md](./PLAN.md) for the full implementation plan, database schema, and build phases.
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 20+
 - Supabase CLI (`npm install -g supabase`)
-- Accounts for: Supabase, Best Buy Developer API, Resend, Groq, Vercel
+- Accounts for: Supabase, Resend, Groq, Railway
 
 ### Environment Variables
 
-```bash
-cp .env.example .env.local
-```
-
-Required variables:
+Create `.env.local` in the project root with the following:
 
 ```
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-RESEND_API_KEY=
-RESEND_FROM_EMAIL=
-UNSUBSCRIBE_SECRET=
-GROQ_API_KEY=
+NEXT_PUBLIC_SUPABASE_URL=        # from Supabase project settings
+NEXT_PUBLIC_SUPABASE_ANON_KEY=   # from Supabase project settings
+SUPABASE_SERVICE_ROLE_KEY=       # from Supabase project settings — server only
+SUPABASE_PROJECT_ID=             # your Supabase project reference ID
+RESEND_API_KEY=                  # from resend.com dashboard
+RESEND_FROM_EMAIL=               # verified sender address
+UNSUBSCRIBE_SECRET=              # random string: openssl rand -hex 32
+GROQ_API_KEY=                    # from console.groq.com
+CRON_SECRET=                     # random string: openssl rand -hex 32
+                                 # also set via: supabase secrets set CRON_SECRET=<value>
 # CheapShark requires no API key
 ```
 
@@ -75,8 +74,13 @@ GROQ_API_KEY=
 
 ```bash
 supabase link --project-ref <your-project-ref>
-supabase db push
+supabase db push                 # applies all 5 migrations
 supabase gen types typescript --project-id <your-project-ref> > src/types/database.types.ts
+```
+
+**One-time cron job setup** (after deploying the Edge Function):
+```bash
+bash scripts/run-cron-setup.sh
 ```
 
 ### Development
@@ -95,7 +99,18 @@ supabase secrets set RESEND_API_KEY=... GROQ_API_KEY=... SUPABASE_SERVICE_ROLE_K
 
 ## Project Status
 
-Pre-development. See [PLAN.md](./PLAN.md) for the phased build plan.
+**In progress — Phase 3 (Vendor Adapter Layer) is next.**
+
+### Build Phases
+- [x] Phase 0 — External service setup (Supabase, Resend, Groq, Railway, GitLab)
+- [x] Phase 1 — Database schema + migrations
+- [x] Phase 2 — Project scaffold
+- [ ] Phase 3 — Vendor adapter layer (CheapShark)
+- [ ] Phase 4 — Repositories
+- [ ] Phase 5 — Services
+- [ ] Phase 6 — API routes
+- [ ] Phase 7 — Edge function + pg_cron
+- [ ] Phase 8 — Frontend
 
 ## Deployment
 
@@ -104,17 +119,6 @@ Pushes to `main` trigger the GitLab CI/CD pipeline (`.gitlab-ci.yml`), which:
 2. Deploys to Railway via the Railway CLI
 
 `RAILWAY_TOKEN` is stored as a masked, protected variable in GitLab CI/CD Settings. All other app secrets are stored in the Railway dashboard and injected at runtime — they never touch GitLab.
-
-### Build Phases
-- [ ] Phase 0 — External service setup
-- [ ] Phase 1 — Database schema + migrations
-- [ ] Phase 2 — Project scaffold
-- [ ] Phase 3 — Vendor adapter layer (CheapShark)
-- [ ] Phase 4 — Repositories
-- [ ] Phase 5 — Services
-- [ ] Phase 6 — API routes
-- [ ] Phase 7 — Edge function + pg_cron
-- [ ] Phase 8 — Frontend
 
 ## Adding a New Vendor
 
