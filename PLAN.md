@@ -14,7 +14,35 @@
 | 7 — Edge function + pg_cron | ⬜ Pending | |
 | 8 — Frontend | ⬜ Pending | |
 
-**Resume point:** Begin Phase 3 — create `src/vendors/types.ts`, `src/vendors/adapters/cheapshark.ts`, `src/vendors/registry.ts`.
+**Resume point:** Begin Phase 3 — install Vitest, then create `src/vendors/types.ts`, `src/vendors/adapters/cheapshark.ts`, `src/vendors/registry.ts`, and `src/vendors/adapters/cheapshark.test.ts`.
+
+### Testing setup (do once at the start of Phase 3)
+```bash
+npm install -D vitest @vitest/coverage-v8 @testing-library/react @testing-library/jest-dom msw
+```
+
+Add to `package.json` scripts:
+```json
+"test": "vitest run",
+"test:watch": "vitest",
+"test:coverage": "vitest run --coverage"
+```
+
+Add `vitest.config.ts` to project root:
+```ts
+import { defineConfig } from 'vitest/config'
+import path from 'path'
+
+export default defineConfig({
+  test: {
+    environment: 'node',
+    globals: true,
+  },
+  resolve: {
+    alias: { '@': path.resolve(__dirname, './src') },
+  },
+})
+```
 
 ---
 
@@ -343,10 +371,23 @@ Zero changes to services, repositories, API routes, or the frontend.
 **Note:** `create-next-app` was scaffolded to a temp directory and copied in due to the project directory name "Kart" containing a capital letter (npm naming restriction). Scaffolding directly with `.` fails.
 
 ### Phase 3 — Vendor Adapter Layer
-1. Create `vendors/types.ts` — `VendorAdapter` interface, `VendorProduct` type
-2. Create `vendors/adapters/cheapshark.ts` — search, getProduct, getCurrentPrice, validateProductId
-3. Create `vendors/registry.ts` — register CheapShark adapter
-4. Test in isolation with `scripts/test-adapter.ts` before wiring to services
+1. Install Vitest + MSW (see testing setup above)
+2. Create `vendors/types.ts` — `VendorAdapter` interface, `VendorProduct` type
+3. Create `vendors/adapters/cheapshark.ts` — search, getProduct, getCurrentPrice, validateProductId
+4. Create `vendors/registry.ts` — register CheapShark adapter
+5. Write `vendors/adapters/cheapshark.test.ts` — unit tests for normalization logic using MSW
+
+**Tests to write (Phase 3):**
+| Test | What it verifies |
+|---|---|
+| `search() normalizes games response` | Raw `/games` JSON → correct `VendorProduct[]` shape; numeric fields parsed; thumb mapped |
+| `search() filters out games with no steamAppID` | Games missing steamAppID are excluded from results |
+| `getCurrentPrice() picks lowest salePrice` | Multi-store response → `price` = min salePrice across active stores |
+| `getCurrentPrice() builds store_prices array` | Each active-store deal appears as `{storeName, storeId, price, dealUrl}` |
+| `getCurrentPrice() converts releaseDate` | Unix timestamp → ISO date string |
+| `getCurrentPrice() normalizes steamRatingPercent` | "95" → 9.5 (÷10 as number) |
+| `validateProductId() accepts numeric strings` | "123" → true; "abc" / "" / "1.5" → false |
+| `search() returns empty array on network error` | MSW returns 500 → adapter returns `[]`, does not throw |
 
 **CheapShark adapter notes:**
 
@@ -419,7 +460,7 @@ No authentication required — all endpoints are open.
 The service layer persists `storePrices` into the `store_prices` column of `price_snapshots`. The frontend reads this column to render the per-store comparison table.
 
 ### Phase 4 — Repositories
-Four classes, each using `createServerClient()`. No business logic — queries only.
+Four files, each using `createServerClient()`. No business logic — queries only.
 
 | Repository | Key methods |
 |---|---|
@@ -429,6 +470,8 @@ Four classes, each using `createServerClient()`. No business logic — queries o
 | `cache.repository.ts` | get (30-min TTL check), set, hashQuery |
 
 All mutations include `.eq('user_id', userId)` — explicit IDOR protection layered under RLS.
+
+**Tests to write (Phase 4):** None — repositories are thin Supabase query wrappers with no branching logic. They are covered by service-layer tests that mock them, and by the live DB when run end-to-end. Do not write unit tests for queries.
 
 ### Phase 5 — Services
 Business logic layer. No HTTP, no raw SQL. Calls repositories and vendor adapters.
@@ -449,8 +492,25 @@ Business logic layer. No HTTP, no raw SQL. Calls repositories and vendor adapter
 - Pass signal + history summary to Groq → 2-sentence natural language response
 - If Groq unavailable: return rule-based text directly
 
+**Tests to write (Phase 5):** Mock all repositories and adapters with `vi.fn()`. Test the service's decision logic, not the mocks.
+
+| Test file | Key cases |
+|---|---|
+| `search.service.test.ts` | Cache hit returns cached result without calling adapter; cache miss calls adapter + persists + caches; adapter timeout (7s) does not crash search |
+| `alert.service.test.ts` | Price above threshold → no email; price at/below threshold → Resend called; duplicate alert within cooldown → not re-sent; HMAC token verifies correctly; tampered token rejected |
+| `recommendation.service.test.ts` | Price ≥20% below 90d avg → "buy" signal; downward 3-week trend → "wait" signal; Groq unavailable → falls back to rule text without throwing |
+| `wishlist.service.test.ts` | Duplicate add rejected; remove with wrong userId rejected (ownership check) |
+
 ### Phase 6 — API Routes (Controllers)
 Thin. Each: parse Zod schema → optional `auth.requireUser()` → one service call → return JSON.
+
+**Tests to write (Phase 6):** Controllers have no logic — Zod + TypeScript coverage is sufficient. Write tests for the Zod schemas themselves instead.
+
+| Test file | Key cases |
+|---|---|
+| `search.schema.test.ts` | Empty string rejected; query over 100 chars rejected; valid short query passes |
+| `wishlist.schema.test.ts` | Missing canonical_id rejected; negative target_price rejected; null target_price (remove alert) passes |
+| `alert.schema.test.ts` | Invalid HMAC token format rejected; valid token shape passes |
 
 | Route | Auth | Service |
 |---|---|---|

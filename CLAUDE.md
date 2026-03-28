@@ -180,6 +180,50 @@ For aggregators (CheapShark): an array of per-store prices. For single-store ret
 
 ---
 
+## Testing
+
+### Test runner: Vitest — not Jest
+This project uses **Vitest** as the test runner. It has the same API as Jest but is significantly faster, has native ESM/TypeScript support without extra config, and integrates naturally with the Vite ecosystem. Never install or configure Jest.
+
+Setup: `npm install -D vitest @vitest/coverage-v8 @testing-library/react @testing-library/jest-dom msw`
+
+### What to unit test
+| Layer | Test what | Test file location |
+|---|---|---|
+| Vendor adapters | Normalization logic: given raw API response → assert correct normalized output | Next to the adapter: `cheapshark.test.ts` |
+| Services | Business logic: cache hit/miss, alert threshold check, dedup logic | Next to the service: `search.service.test.ts` |
+| Zod schemas | Valid inputs pass, invalid inputs fail with correct error paths | Next to the schema: `search.schema.test.ts` |
+
+### What NOT to unit test
+- **Repositories** — they are thin Supabase query wrappers. Mock at the service boundary instead.
+- **Controllers (API routes)** — they have no logic; they parse + delegate. TypeScript + Zod coverage is sufficient.
+- **`src/components/ui/`** — shadcn-generated; never edit, never test.
+- **`src/types/database.types.ts`** — auto-generated.
+
+### Use MSW for adapter tests — never mock `fetch` directly
+Vendor adapter tests use **MSW (Mock Service Worker)** to intercept HTTP requests. This means the adapter's actual `fetch` calls execute and MSW returns a fake response — the full HTTP layer is exercised. Do not use `vi.mock('node-fetch')` or `vi.spyOn(global, 'fetch')`.
+
+### Mock at the boundary — no over-mocking
+Service tests should mock **repositories and adapters** (the layer below the service), not internal functions within the service itself. If you find yourself mocking a private helper inside a service, the logic needs to be extracted or the test is testing the wrong thing.
+
+### Test file co-location
+Test files live **next to the file they test**, not in a separate `__tests__/` directory.
+- `src/vendors/adapters/cheapshark.ts` → `src/vendors/adapters/cheapshark.test.ts`
+- `src/services/search.service.ts` → `src/services/search.service.test.ts`
+- `src/schemas/search.schema.ts` → `src/schemas/search.schema.test.ts`
+
+### Tests and typecheck must both pass before considering work done
+Run both before marking any phase or feature complete:
+```bash
+npm run typecheck   # tsc --noEmit
+npm test            # vitest run
+```
+
+### Coverage target: services and adapters
+Aim for meaningful coverage on the two layers that contain real logic — services and adapters. Do not chase 100% coverage on repositories, controllers, or generated code. Coverage is a signal, not a goal.
+
+---
+
 ## CheapShark API
 
 ### Never call `GET /game?id=` — it is blocked by Cloudflare

@@ -233,4 +233,29 @@ A monorepo reorganization would have meant:
 
 ---
 
+## 10. Choosing a Test Runner: Vitest over Jest
+
+### The Problem
+We needed a test runner that works cleanly with a modern TypeScript + Next.js 15 project. The default choice in the ecosystem has historically been Jest, but Jest was designed in the CommonJS era and requires non-trivial configuration to handle ESM modules and TypeScript paths.
+
+### Why Jest Is Difficult Here
+Next.js 15 uses ESM by default. Jest's ESM support requires either Babel transforms (which defeats the purpose of native TypeScript) or an experimental `--experimental-vm-modules` flag. Getting Jest to respect the `@/` path alias from `tsconfig.json` requires a separate `moduleNameMapper` config. There are known incompatibilities between Jest's module system and certain Next.js internals. Getting all of this to work is possible but adds 30–60 minutes of yak-shaving before writing a single test.
+
+### The Decision: Vitest
+Vitest is a test runner built on top of Vite. It has the same API as Jest (`describe`, `it`, `expect`, `vi.fn()`, `vi.mock()`) so the learning curve is minimal, but it works with native TypeScript and ESM out of the box. The `tsconfig.json` `paths` aliases are respected automatically. There is no Babel pipeline. It is significantly faster than Jest on cold starts because it shares Vite's module graph.
+
+The only meaningful trade-off: Vitest is a younger project than Jest and has a smaller plugin ecosystem. For our use case (unit testing pure TypeScript logic), this is not a constraint.
+
+### Testing Philosophy Established
+Alongside the framework choice, we established what to test and what not to test:
+- **Adapters** — the normalization logic that transforms raw vendor API responses. These are pure functions and are the highest-value tests in the project.
+- **Services** — the business logic layer. Mock repositories and adapters; test the decision logic.
+- **Zod schemas** — fast tests for validation boundaries.
+- **Repositories** — not unit tested. They are thin Supabase query wrappers. Testing them with mocks just tests that you can call `.eq()` on a mock object.
+- **Controllers** — not unit tested. They have no logic. TypeScript + Zod coverage is sufficient.
+
+The rule: test where logic lives. Don't test where there is no logic to break.
+
+---
+
 *This document should be updated whenever a significant architectural or technical decision is made. When adding an entry: describe the problem context, what options were considered, what was chosen, and what trade-offs were accepted. The goal is to explain the reasoning, not just the outcome.*
