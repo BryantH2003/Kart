@@ -1,8 +1,8 @@
-# Kart — Engineering Decisions Journal
+# Kart — Architectural Decisions
 
-This document tells the story of the architectural and technical problems encountered while building Kart, the decisions made to solve them, and the trade-offs considered along the way. It is written for two audiences: for me to reference when discussing the project in interviews, and for any collaborator or reader who wants to understand *why* the codebase looks the way it does.
+Architectural decisions about system design, technology choices, patterns, and project structure. These are the choices that shaped the overall shape of the codebase — the kind of decisions you'd revisit if requirements changed significantly or if the project were handed to a new team.
 
-Entries are ordered roughly chronologically and grouped by theme.
+For code-level decisions (schema performance, query optimization, tooling fixes), see [`DECISIONS-IMPLEMENTATION.md`](./DECISIONS-IMPLEMENTATION.md).
 
 ---
 
@@ -32,7 +32,7 @@ This also turned out to be a better MVP choice architecturally: one API call ret
 **The trade-off:** we're now dependent on CheapShark's continued operation and data quality. We mitigate this through the vendor adapter pattern (see below) so the system works with any number of data sources — CheapShark is just the first.
 
 ### One Gotcha Discovered During Testing
-After integrating CheapShark, we found that the `GET /game?id=` endpoint is blocked by Cloudflare and returns an HTML error page instead of JSON. This only surfaces at runtime, not during development with static test data. The correct endpoint for fetching per-store deals for a specific game is `GET /deals?steamAppID={id}`. This is documented in the project rules and the adapter notes to prevent the mistake from being repeated.
+After integrating CheapShark, we found that the `GET /game?id=` endpoint is blocked by Cloudflare and returns an HTML error page instead of JSON. This only surfaces at runtime, not during development with static test data. The correct endpoint for fetching per-store deals for a specific game is `GET /deals?steamAppID={id}`. This is documented in the project rules and the adapter to prevent the mistake from being repeated.
 
 ---
 
@@ -42,7 +42,7 @@ After integrating CheapShark, we found that the `GET /game?id=` endpoint is bloc
 If we wire CheapShark API calls directly into the search service or product service, adding a second vendor later means touching business logic code, the search flow, the product page aggregation, and the polling job. Every new vendor is a modification of existing code rather than an addition alongside it.
 
 ### The Decision
-We introduced a `VendorAdapter` interface that every data source must implement. The interface defines a fixed contract: `search()`, `getProduct()`, `getCurrentPrice()`, and `validateProductId()`. The adapter layer lives in `src/vendors/adapters/` — one file per vendor. A registry (`src/vendors/registry.ts`) maps vendor IDs to their implementations.
+We introduced a `VendorAdapter` interface that every data source must implement. The interface defines a fixed contract: `search()` and `getProduct()`. The adapter layer lives in `src/vendors/adapters/` — one file per vendor. A registry (`src/vendors/registry.ts`) maps vendor IDs to their implementations.
 
 Services only ever call the registry. They do not know which vendor they are talking to.
 
@@ -55,7 +55,7 @@ Adding a second vendor — say, a direct eBay integration — is exactly three s
 No changes to any service, repository, API route, or frontend component. The search service fans out to all registered adapters automatically.
 
 ### The Trade-off
-The adapter interface forces normalization. CheapShark returns a `steamRatingPercent` (0–100). The adapter must normalize that to a 0–10 scale for the `rating` column. Amazon returns 1–5 stars. The adapter normalizes that to 0–10 as well. This means the interface is opinionated about what "rating" means, and every adapter inherits that opinion. If a vendor has data that genuinely doesn't fit the interface, we have to either extend the interface (affecting all adapters) or put it in the `metadata JSONB` column.
+The adapter interface forces normalization. CheapShark returns a `steamRatingPercent` (0–100). The adapter must normalize that to a 0–10 scale for the `rating` field. Amazon returns 1–5 stars. The adapter normalizes that to 0–10 as well. This means the interface is opinionated about what "rating" means, and every adapter inherits that opinion. If a vendor has data that genuinely doesn't fit the interface, we have to either extend the interface (affecting all adapters) or put it in the `metadata JSONB` column.
 
 So far, the `metadata JSONB` escape hatch has handled every vendor-specific field without needing to touch the interface.
 
@@ -148,45 +148,7 @@ This exposed a general rule: **anything that references a secret cannot be a mig
 
 ---
 
-## 7. Schema Optimization: What We Missed in the Initial Design
-
-### The Problem
-The initial schema was designed for correctness — right tables, right relationships, right constraints. What it didn't account for was query patterns.
-
-### Missing Foreign Key Indexes
-PostgreSQL does not automatically index foreign key columns. This is a common surprise. We had several FK columns with no index:
-
-- `vendor_products.canonical_id` — used in every product page join. Without an index, looking up all vendor listings for a product requires a full table scan of `vendor_products`.
-- `wishlists.canonical_id` — used by the alert service to find all users who wishlisted a given product. Same full-scan problem.
-- `alerts_sent.user_id` and `vendor_product_id` — used in the deduplication check before sending every alert. Without a composite index, this check slows proportionally with the size of the alert history.
-
-All added in migration `004_indexes_and_optimizations.sql`.
-
-### The price_history_daily Primary Key Problem
-The original design:
-```sql
-CREATE TABLE price_history_daily (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  vendor_product_id UUID ...,
-  date DATE NOT NULL,
-  UNIQUE(vendor_product_id, date)
-);
-```
-
-This creates two indexes: one for the UUID primary key and one for the UNIQUE constraint. But the UUID primary key is never used. Nothing in the codebase queries price history by row UUID. Every query is `WHERE vendor_product_id = $1 ORDER BY date DESC`. The UUID column is pure overhead — extra storage, extra index maintenance on every insert, and a misleading signal to anyone reading the schema.
-
-Fixed by dropping the UUID column and making `(vendor_product_id, date)` the composite primary key. One index instead of two. The PK is now the natural access key.
-
-### Cleanup Jobs Driving Index Design
-A non-obvious index requirement: the cron job that deletes old price snapshots (`DELETE WHERE recorded_at < now() - '7 days'`) cannot efficiently use the composite index `(vendor_product_id, recorded_at DESC)` because it touches all vendor_product_id values simultaneously. It needs a standalone index on `recorded_at`.
-
-The same pattern applied to `search_cache.cached_at`. The 30-minute TTL cleanup is a full table scan without it.
-
-**The rule that emerged:** every table with a time-based cleanup job needs a standalone index on the timestamp column used in the DELETE predicate, regardless of what other indexes exist on that column.
-
----
-
-## 8. Designing for Vendors We Haven't Written Yet
+## 7. Designing for Vendors We Haven't Written Yet
 
 ### The Problem
 The initial schema was designed with CheapShark in mind. Many of its assumptions only hold for a PC game aggregator:
@@ -215,7 +177,7 @@ The question to ask about any table before finalizing its migration is: *what as
 
 ---
 
-## 9. Monorepo vs. Flat Structure
+## 8. Monorepo vs. Flat Structure
 
 ### The Question
 Early in Phase 2, the question came up of whether to organize the project into separate directories for the database layer, backend, and web app — a monorepo-style structure with `apps/web/`, `packages/database/`, etc.
@@ -233,13 +195,13 @@ A monorepo reorganization would have meant:
 
 ---
 
-## 10. Choosing a Test Runner: Vitest over Jest
+## 9. Choosing a Test Runner: Vitest over Jest
 
 ### The Problem
-We needed a test runner that works cleanly with a modern TypeScript + Next.js 15 project. The default choice in the ecosystem has historically been Jest, but Jest was designed in the CommonJS era and requires non-trivial configuration to handle ESM modules and TypeScript paths.
+We needed a test runner that works cleanly with a modern TypeScript + Next.js project. The default choice in the ecosystem has historically been Jest, but Jest was designed in the CommonJS era and requires non-trivial configuration to handle ESM modules and TypeScript paths.
 
 ### Why Jest Is Difficult Here
-Next.js 15 uses ESM by default. Jest's ESM support requires either Babel transforms (which defeats the purpose of native TypeScript) or an experimental `--experimental-vm-modules` flag. Getting Jest to respect the `@/` path alias from `tsconfig.json` requires a separate `moduleNameMapper` config. There are known incompatibilities between Jest's module system and certain Next.js internals. Getting all of this to work is possible but adds 30–60 minutes of yak-shaving before writing a single test.
+Next.js uses ESM by default. Jest's ESM support requires either Babel transforms (which defeats the purpose of native TypeScript) or an experimental `--experimental-vm-modules` flag. Getting Jest to respect the `@/` path alias from `tsconfig.json` requires a separate `moduleNameMapper` config. There are known incompatibilities between Jest's module system and certain Next.js internals. Getting all of this to work is possible but adds 30–60 minutes of yak-shaving before writing a single test.
 
 ### The Decision: Vitest
 Vitest is a test runner built on top of Vite. It has the same API as Jest (`describe`, `it`, `expect`, `vi.fn()`, `vi.mock()`) so the learning curve is minimal, but it works with native TypeScript and ESM out of the box. The `tsconfig.json` `paths` aliases are respected automatically. There is no Babel pipeline. It is significantly faster than Jest on cold starts because it shares Vite's module graph.
@@ -258,4 +220,22 @@ The rule: test where logic lives. Don't test where there is no logic to break.
 
 ---
 
-*This document should be updated whenever a significant architectural or technical decision is made. When adding an entry: describe the problem context, what options were considered, what was chosen, and what trade-offs were accepted. The goal is to explain the reasoning, not just the outcome.*
+## 10. Next.js 16: middleware.ts → proxy.ts
+
+### The Problem
+After scaffolding the project with `create-next-app`, the session middleware (Supabase auth session refresh) lived in `middleware.ts` at the project root, exporting `middleware()` and `config`. This is the standard Next.js 13–15 pattern. When applying the `next-best-practices` skill during Phase 3, we discovered that Next.js 16 replaced this mechanism.
+
+### What Changed
+Next.js 16 introduces `proxy.ts` as the replacement for `middleware.ts`. The export name changes from `middleware` to `proxy`, and the config export changes from `config` to `proxyConfig`. The old `middleware.ts` file is no longer loaded by the runtime in Next.js 16 projects.
+
+If we had shipped with `middleware.ts`, the session refresh logic would silently not run — every route would behave as if there were no middleware at all. Auth-gated routes would appear to work (client-side redirects would still fire) but server-side session state would never be refreshed, causing session expiry issues that are difficult to debug.
+
+### The Decision
+Delete `middleware.ts`, create `proxy.ts` exporting `proxy()` and `proxyConfig`. The logic inside is identical — only the file name and export names changed. Add a project rule to CLAUDE.md so future edits know to maintain `proxy.ts`, not `middleware.ts`.
+
+### The Trade-off
+None significant. This is a breaking rename in the framework. The only risk is forgetting the convention when returning to the codebase — hence the CLAUDE.md rule.
+
+---
+
+*Add an entry here whenever a pattern, technology choice, or system-level structure decision is made. Focus on the "why" — what problem was being solved and what alternatives were ruled out.*

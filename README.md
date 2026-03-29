@@ -45,7 +45,11 @@ Each retailer is implemented as an adapter behind a common interface. Adding a n
 
 ## Getting Started
 
-See [PLAN.md](./PLAN.md) for the full implementation plan, database schema, and build phases.
+See [docs/PLAN.md](./docs/PLAN.md) for the full implementation plan, database schema, and build phases.
+
+**Engineering decisions:**
+- [docs/DECISIONS-ARCHITECTURE.md](./docs/DECISIONS-ARCHITECTURE.md) — system design, patterns, technology choices
+- [docs/DECISIONS-IMPLEMENTATION.md](./docs/DECISIONS-IMPLEMENTATION.md) — performance, schema optimization, tooling
 
 ### Prerequisites
 - Node.js 20+
@@ -99,13 +103,13 @@ supabase secrets set RESEND_API_KEY=... GROQ_API_KEY=... SUPABASE_SERVICE_ROLE_K
 
 ## Project Status
 
-**In progress — Phase 3 (Vendor Adapter Layer) is next.**
+**In progress — Phase 4 (Repositories) is next.**
 
 ### Build Phases
 - [x] Phase 0 — External service setup (Supabase, Resend, Groq, Railway, GitLab)
 - [x] Phase 1 — Database schema + migrations
 - [x] Phase 2 — Project scaffold
-- [ ] Phase 3 — Vendor adapter layer (CheapShark)
+- [x] Phase 3 — Vendor adapter layer (CheapShark, Vitest + MSW, 14 tests)
 - [ ] Phase 4 — Repositories
 - [ ] Phase 5 — Services
 - [ ] Phase 6 — API routes

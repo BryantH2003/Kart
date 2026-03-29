@@ -1,6 +1,9 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
+  // Required for Railway (self-hosted): creates a minimal standalone bundle
+  // with only production dependencies. See docs/PLAN.md → Deployment.
+  output: 'standalone',
   images: {
     remotePatterns: [
       {
