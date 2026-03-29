@@ -1,6 +1,6 @@
 // Smoke test for the CheapShark adapter against the live API.
 // Run with: npm run smoke
-import { getAdapter } from '../src/vendors/registry.ts'
+import { getAdapter } from '../src/vendors/registry'
 
 const adapter = getAdapter('cheapshark')
 if (!adapter) throw new Error('cheapshark adapter not found in registry')

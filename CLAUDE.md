@@ -221,9 +221,10 @@ Test files live **next to the file they test**, not in a separate `__tests__/` d
 - `src/services/search.service.ts` → `src/services/search.service.test.ts`
 - `src/schemas/search.schema.ts` → `src/schemas/search.schema.test.ts`
 
-### Tests and typecheck must both pass before considering work done
-Run both before marking any phase or feature complete:
+### Lint, typecheck, and tests must all pass before considering work done
+Run all three before marking any phase or feature complete:
 ```bash
+npm run lint        # eslint
 npm run typecheck   # tsc --noEmit
 npm test            # vitest run
 ```
