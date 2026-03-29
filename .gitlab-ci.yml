@@ -34,6 +34,9 @@ deploy-production:
   script:
     - npm install -g @railway/cli
     - railway up --service kart --detach
+  variables:
+    RAILWAY_TOKEN: $RAILWAY_TOKEN
+    RAILWAY_PROJECT_ID: $RAILWAY_PROJECT_ID
   environment:
     name: production
     url: https://your-app.railway.app   # update this once Railway assigns your URL
