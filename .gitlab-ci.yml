@@ -39,6 +39,6 @@ deploy-production:
     RAILWAY_PROJECT_ID: $RAILWAY_PROJECT_ID
   environment:
     name: production
-    url: https://your-app.railway.app   # update this once Railway assigns your URL
+    url: kart-production-805a.up.railway.app
   only:
     - main
