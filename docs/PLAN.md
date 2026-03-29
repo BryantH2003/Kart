@@ -8,13 +8,13 @@
 | 1 — Database | ✅ Complete | 5 migrations applied; types generated |
 | 2 — Project scaffold | ✅ Complete | Next.js 16, shadcn/ui, all lib files, middleware, Zod schemas |
 | 3 — Vendor adapter layer | ✅ Complete | CheapShark adapter + registry; Vitest + MSW; 14 tests passing |
-| 4 — Repositories | 🔜 Next | |
-| 5 — Services | ⬜ Pending | |
+| 4 — Repositories | ✅ Complete | 4 repositories; typecheck passes |
+| 5 — Services | 🔜 Next | |
 | 6 — API routes | ⬜ Pending | |
 | 7 — Edge function + pg_cron | ⬜ Pending | |
 | 8 — Frontend | ⬜ Pending | |
 
-**Resume point:** Begin Phase 4 — create `src/repositories/product.repository.ts`, `price.repository.ts`, `wishlist.repository.ts`, and `cache.repository.ts`.
+**Resume point:** Begin Phase 5 — create services in `src/services/`: `matching.service.ts`, `search.service.ts`, `product.service.ts`, `wishlist.service.ts`, `alert.service.ts`, `recommendation.service.ts`.
 
 ### Testing setup (do once at the start of Phase 3)
 ```bash
