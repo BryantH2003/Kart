@@ -194,4 +194,34 @@ Any library that validates credentials or makes network calls in its constructor
 
 ---
 
+## 8. Catalog Write Operations Use the Admin Client
+
+### The Problem
+`canonical_products`, `vendor_products`, and `price_snapshots` were given read-only RLS policies in `002_rls_policies.sql` with the comment *"only the service role writes here."* When the search service tried to persist products using the standard `createClient()` (anon key), every insert and upsert was silently blocked by RLS. The error only surfaced at runtime — `upsertCanonical` returned no error but also wrote nothing, leaving the product 404.
+
+### Why the Admin Client Is Correct Here
+The write operations happen inside server-side repository functions called from the services layer, which is only ever invoked by API route handlers that have already validated input with Zod. This matches the CLAUDE.md rule: *"Only call `createAdminClient()` in server-side code that has already verified authorization explicitly."*
+
+Adding permissive INSERT/UPDATE policies to the catalog tables would be incorrect — those tables are not user-writable. The service role is the intended writer, and `createAdminClient()` is the mechanism for that.
+
+### The Rule
+Read operations on public catalog tables use `createClient()` (anon key, subject to RLS). Write operations on catalog tables use `createAdminClient()` (service role, bypasses RLS). This boundary is enforced in the repository layer — the service layer never needs to know which client is used.
+
+---
+
+## 9. Product Endpoint Accepts Both UUID and steamAppId
+
+### The Problem
+The search endpoint returns `steamAppId` (e.g. `"1145360"`) in its results, but the product endpoint `/api/products/[id]` originally only accepted canonical UUIDs. The frontend would need a separate lookup step to go from a search result to a product page, or the search result would need to include the canonical UUID before the record was persisted.
+
+### The Decision
+`product.service.getProductPage()` checks whether the `id` argument matches UUID format. If yes, it does a direct `findById` lookup. If not, it falls back to `findByExternalId(id, 'steam_app_id')`. This makes the endpoint accept both forms transparently — the controller stays thin and the service handles the ambiguity.
+
+Additionally, the search service was updated to await `upsertCanonicalOnly()` (a fast single-table upsert) and include the returned `canonicalId` in search results. The heavier vendor + snapshot writes remain fire-and-forget. This means search results always carry a `canonicalId` that can be used directly for product page navigation.
+
+### The Trade-off
+The UUID detection regex in the service is a minor code smell — ideally the caller always knows what type of ID it has. In Phase 8 the frontend will use `canonicalId` from search results for all product links, so the steamAppId fallback becomes a convenience for direct URL access (e.g. `curl /api/products/1145360`) rather than a primary code path.
+
+---
+
 *Add an entry here whenever a code-level decision is made that isn't obvious from reading the code alone — performance trade-offs, implementation quirks, non-obvious TypeScript patterns, or tooling configuration choices.*

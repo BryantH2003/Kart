@@ -5,9 +5,16 @@ import type { ProductPageData, VendorPriceData } from '@/types/api.types'
 
 // Assembles everything the product detail page needs:
 // canonical metadata + per-vendor latest prices + 90-day price history.
-export async function getProductPage(canonicalId: string): Promise<ProductPageData | null> {
-  const canonical = await productRepo.findById(canonicalId)
+// Accepts either a canonical UUID or a steamAppId — tries UUID first, falls back
+// to external_id lookup so the frontend can link directly from search results.
+export async function getProductPage(id: string): Promise<ProductPageData | null> {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+  const canonical = isUuid
+    ? await productRepo.findById(id)
+    : await productRepo.findByExternalId(id, 'steam_app_id')
+
   if (!canonical) return null
+  const canonicalId = canonical.id
 
   // Fetch all active vendor listings for this product
   const supabase = await createClient()

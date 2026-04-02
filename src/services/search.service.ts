@@ -1,6 +1,6 @@
 import * as cacheRepo from '@/repositories/cache.repository'
 import { getAllAdapters } from '@/vendors/registry'
-import { persistProduct } from '@/services/matching.service'
+import { upsertCanonicalOnly, persistVendorData } from '@/services/matching.service'
 import type { SearchResultItem } from '@/types/api.types'
 
 const ADAPTER_TIMEOUT_MS = 7000
@@ -41,8 +41,9 @@ export async function search(query: string): Promise<SearchResultItem[]> {
       if (seen.has(key)) continue
       seen.add(key)
 
-      // Persist in the background — don't block the search response.
-      persistProduct(adapter.vendorId, {
+      // Await canonical upsert so we can return canonicalId in results.
+      // Fire-and-forget the vendor + snapshot write — it's non-fatal if it fails.
+      const normalizedProduct = {
         externalId: r.externalId,
         externalIdType: r.externalIdType,
         name: r.name,
@@ -50,8 +51,11 @@ export async function search(query: string): Promise<SearchResultItem[]> {
         category: r.category,
         vendorProductId: r.vendorProductId,
         price: r.cheapestPrice,
-        availability: 'in_stock',
-      }).catch(() => {/* persistence errors are non-fatal for search */})
+        availability: 'in_stock' as const,
+      }
+      const canonicalId = await upsertCanonicalOnly(normalizedProduct).catch(() => undefined)
+      persistVendorData(canonicalId ?? '', adapter.vendorId, normalizedProduct)
+        .catch(() => {/* non-fatal */})
 
       items.push({
         gameId: r.vendorProductId,
@@ -59,6 +63,7 @@ export async function search(query: string): Promise<SearchResultItem[]> {
         name: r.name,
         cheapestPrice: r.cheapestPrice,
         imageUrl: r.imageUrl ?? '',
+        canonicalId,
       })
     }
   }

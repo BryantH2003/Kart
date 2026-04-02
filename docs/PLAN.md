@@ -2,26 +2,28 @@
 
 ## Progress
 
-| Phase | Status | Notes |
-|---|---|---|
-| 0 — External service setup | ✅ Complete | Supabase, Resend, Groq, Railway, GitLab all configured |
-| 1 — Database | ✅ Complete | 5 migrations applied; types generated |
-| 2 — Project scaffold | ✅ Complete | Next.js 16, shadcn/ui, all lib files, middleware, Zod schemas |
-| 3 — Vendor adapter layer | ✅ Complete | CheapShark adapter + registry; Vitest + MSW; 14 tests passing |
-| 4 — Repositories | ✅ Complete | 4 repositories; typecheck passes |
-| 5 — Services | ✅ Complete | 6 services; 35 tests passing |
-| 6 — API routes | 🔜 Next | |
-| 7 — Edge function + pg_cron | ⬜ Pending | |
-| 8 — Frontend | ⬜ Pending | |
+| Phase                       | Status      | Notes                                                         |
+| --------------------------- | ----------- | ------------------------------------------------------------- |
+| 0 — External service setup  | ✅ Complete | Supabase, Resend, Groq, Railway, GitLab all configured        |
+| 1 — Database                | ✅ Complete | 5 migrations applied; types generated                         |
+| 2 — Project scaffold        | ✅ Complete | Next.js 16, shadcn/ui, all lib files, middleware, Zod schemas |
+| 3 — Vendor adapter layer    | ✅ Complete | CheapShark adapter + registry; Vitest + MSW; 14 tests passing |
+| 4 — Repositories            | ✅ Complete | 4 repositories; typecheck passes                              |
+| 5 — Services                | ✅ Complete | 6 services; 35 tests passing                                  |
+| 6 — API routes              | ✅ Complete | 8 routes; 55 tests passing                                    |
+| 7 — Edge function + pg_cron | ⬜ Pending  |                                                               |
+| 8 — Frontend                | ⬜ Pending  |                                                               |
 
-**Resume point:** Begin Phase 6 — create API route handlers in `src/app/api/`: `search/route.ts`, `products/[id]/route.ts`, `wishlist/route.ts`, `wishlist/[id]/route.ts`, `alerts/route.ts`, `unsubscribe/route.ts`, `ai/recommend/route.ts`.
+**Resume point:** Begin Phase 7 — implement the Supabase Edge Function at `supabase/functions/poll-prices/index.ts` and register pg_cron jobs via `scripts/setup-cron-jobs.sql`.
 
 ### Testing setup (do once at the start of Phase 3)
+
 ```bash
 npm install -D vitest @vitest/coverage-v8 @testing-library/react @testing-library/jest-dom msw
 ```
 
 Add to `package.json` scripts:
+
 ```json
 "test": "vitest run",
 "test:watch": "vitest",
@@ -29,24 +31,26 @@ Add to `package.json` scripts:
 ```
 
 Add `vitest.config.ts` to project root:
+
 ```ts
-import { defineConfig } from 'vitest/config'
-import path from 'path'
+import { defineConfig } from "vitest/config";
+import path from "path";
 
 export default defineConfig({
   test: {
-    environment: 'node',
+    environment: "node",
     globals: true,
   },
   resolve: {
-    alias: { '@': path.resolve(__dirname, './src') },
+    alias: { "@": path.resolve(__dirname, "./src") },
   },
-})
+});
 ```
 
 ---
 
 ## Context
+
 Building a deal-finder web app ("Kart") that helps users make informed purchase decisions. Users search for products, view cross-vendor price comparisons and history, add items to a wishlist, set price drop alerts, and get AI-powered buy/wait recommendations. MVP uses CheapShark as the data source — a free, no-key API that aggregates PC game prices across Steam, GOG, Green Man Gaming, Humble Store, and 15+ other storefronts. This naturally demonstrates the multi-store comparison feature that is Kart's core value. The vendor adapter architecture allows new vendors (eBay, Best Buy, etc.) to be added later by writing one adapter file.
 
 Auth is required only for wishlist and alerts. Search and product pages are publicly accessible.
@@ -54,6 +58,7 @@ Auth is required only for wishlist and alerts. Search and product pages are publ
 ---
 
 ## Confirmed Design Decisions
+
 - **Auth:** Email/password + Google OAuth via Supabase Auth
 - **AI:** Groq free tier (Llama 3 8B) for natural language buy/wait recommendations
 - **Auth facade:** Full migration-ready pattern (`lib/auth/index.ts` + `lib/auth/providers/supabase.ts`)
@@ -65,19 +70,19 @@ Auth is required only for wishlist and alerts. Search and product pages are publ
 
 ## Tech Stack
 
-| Layer | Choice |
-|---|---|
-| Frontend | Next.js 14+ (App Router) + TypeScript |
-| UI | shadcn/ui + Tailwind CSS |
-| Database | Supabase PostgreSQL |
-| Auth | Supabase Auth (email/password + Google OAuth) |
-| Background jobs | Supabase pg_cron + Edge Functions |
-| Vendors (MVP) | CheapShark API (free, no API key, no registration required) |
-| Email alerts | Resend (3,000 emails/month free) |
-| AI recommendations | Groq free tier — Llama 3 8B (14,400 req/day free) |
-| Source control | GitLab |
-| CI/CD | GitLab CI/CD (`.gitlab-ci.yml`) |
-| Hosting | Railway (free tier, $5/mo credit) |
+| Layer              | Choice                                                      |
+| ------------------ | ----------------------------------------------------------- |
+| Frontend           | Next.js 14+ (App Router) + TypeScript                       |
+| UI                 | shadcn/ui + Tailwind CSS                                    |
+| Database           | Supabase PostgreSQL                                         |
+| Auth               | Supabase Auth (email/password + Google OAuth)               |
+| Background jobs    | Supabase pg_cron + Edge Functions                           |
+| Vendors (MVP)      | CheapShark API (free, no API key, no registration required) |
+| Email alerts       | Resend (3,000 emails/month free)                            |
+| AI recommendations | Groq free tier — Llama 3 8B (14,400 req/day free)           |
+| Source control     | GitLab                                                      |
+| CI/CD              | GitLab CI/CD (`.gitlab-ci.yml`)                             |
+| Hosting            | Railway (free tier, $5/mo credit)                           |
 
 ---
 
@@ -270,6 +275,7 @@ CREATE TABLE alerts_sent (
 ```
 
 **Indexes (migration 004):**
+
 - `idx_vendor_products_canonical_id` — FK join for product page
 - `idx_vendor_products_last_synced NULLS FIRST` — polling queue ordering
 - `idx_price_snapshots_recorded_at` — nightly 7-day cleanup DELETE
@@ -309,10 +315,13 @@ HTTP Request
 ```
 
 ### Auth Facade (migration-safe)
+
 Only `lib/auth/providers/supabase.ts` ever calls `supabase.auth`. All other code imports from `lib/auth/index.ts`. To swap auth providers (e.g., to Clerk), write a new provider file and update the one import in `index.ts`.
 
 ### Vendor Adapter Pattern (infinitely scalable)
+
 Adding a new vendor requires exactly 3 steps:
+
 1. Write `vendors/adapters/<vendor>.ts` implementing `VendorAdapter`
 2. Add one line to `vendors/registry.ts`
 3. Insert one row into the `vendors` DB table
@@ -324,6 +333,7 @@ Zero changes to services, repositories, API routes, or the frontend.
 ## Build Phases
 
 ### Phase 0 — External Service Setup
+
 1. **Supabase** — Create project, enable `pg_cron` and `pg_net` extensions
 2. **CheapShark** — No registration, no API key. Base URL: `https://www.cheapshark.com/api/1.0`. Nothing to do here.
 3. **Resend** — Create account, verify sending domain
@@ -334,6 +344,7 @@ Zero changes to services, repositories, API routes, or the frontend.
 7. Populate `.env.local` (see Environment Variables section)
 
 ### Phase 1 — Database ✅
+
 1. Install Supabase CLI, link project: `supabase link --project-ref <ref>`
 2. Apply all 5 migrations: `supabase db push`
 3. Generate types: `supabase gen types typescript --project-id <ref> > src/types/database.types.ts`
@@ -350,7 +361,9 @@ Zero changes to services, repositories, API routes, or the frontend.
 **Rule:** Every schema change → new migration file → `supabase db push` → regenerate types. Never use the dashboard.
 
 ### Phase 2 — Project Scaffold ✅
+
 **What was built:**
+
 - Next.js 16 (App Router) + TypeScript + Tailwind CSS
 - shadcn/ui initialized via `components.json`; components added: `button`, `card`, `command`, `table`, `dialog`, `sonner`, `badge`, `input`, `label`, `chart`
 - Dependencies installed: `@supabase/supabase-js`, `@supabase/ssr`, `zod`, `groq-sdk`, `resend`, `class-variance-authority`, `clsx`, `tailwind-merge`
@@ -371,6 +384,7 @@ Zero changes to services, repositories, API routes, or the frontend.
 **Note:** `create-next-app` was scaffolded to a temp directory and copied in due to the project directory name "Kart" containing a capital letter (npm naming restriction). Scaffolding directly with `.` fails.
 
 ### Phase 3 — Vendor Adapter Layer
+
 1. Install Vitest + MSW (see testing setup above)
 2. Create `vendors/types.ts` — `VendorAdapter` interface, `VendorProduct` type
 3. Create `vendors/adapters/cheapshark.ts` — search, getProduct, getCurrentPrice, validateProductId
@@ -394,6 +408,7 @@ Zero changes to services, repositories, API routes, or the frontend.
 No authentication required — all endpoints are open.
 
 **Endpoints:**
+
 - Search: `GET https://www.cheapshark.com/api/1.0/games?title={query}&limit=20`
 - Get all store deals for a game: `GET https://www.cheapshark.com/api/1.0/deals?steamAppID={steamAppID}&pageSize=60`
 - List stores (with isActive flag): `GET https://www.cheapshark.com/api/1.0/stores`
@@ -401,39 +416,46 @@ No authentication required — all endpoints are open.
 ⚠️ `GET /game?id=` is blocked by Cloudflare — do not use it. Use `/deals?steamAppID=` instead.
 
 **Search response shape (`/games`):**
+
 ```json
-[{
-  "gameID": "61",
-  "steamAppID": "8930",
-  "cheapest": "2.99",
-  "cheapestDealID": "SGRhfWxOc7YoCvRw4DGIk...",
-  "external": "Sid Meier's Civilization V",
-  "internalName": "SIDMEIERSCIVILIZATIONV",
-  "thumb": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/8930/capsule_231x87.jpg"
-}]
+[
+  {
+    "gameID": "61",
+    "steamAppID": "8930",
+    "cheapest": "2.99",
+    "cheapestDealID": "SGRhfWxOc7YoCvRw4DGIk...",
+    "external": "Sid Meier's Civilization V",
+    "internalName": "SIDMEIERSCIVILIZATIONV",
+    "thumb": "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/8930/capsule_231x87.jpg"
+  }
+]
 ```
 
 **Per-store deals response shape (`/deals?steamAppID=8930`) — one object per store:**
+
 ```json
-[{
-  "title": "Sid Meier's Civilization V",
-  "dealID": "SGRhfWxO...",
-  "storeID": "1",
-  "gameID": "61",
-  "salePrice": "2.99",
-  "normalPrice": "29.99",
-  "isOnSale": "1",
-  "metacriticScore": "90",
-  "steamRatingText": "Overwhelmingly Positive",
-  "steamRatingPercent": "95",
-  "steamRatingCount": "77866",
-  "steamAppID": "8930",
-  "releaseDate": 1285027200,
-  "thumb": "https://shared.fastly.steamstatic.com/..."
-}]
+[
+  {
+    "title": "Sid Meier's Civilization V",
+    "dealID": "SGRhfWxO...",
+    "storeID": "1",
+    "gameID": "61",
+    "salePrice": "2.99",
+    "normalPrice": "29.99",
+    "isOnSale": "1",
+    "metacriticScore": "90",
+    "steamRatingText": "Overwhelmingly Positive",
+    "steamRatingPercent": "95",
+    "steamRatingCount": "77866",
+    "steamAppID": "8930",
+    "releaseDate": 1285027200,
+    "thumb": "https://shared.fastly.steamstatic.com/..."
+  }
+]
 ```
 
 **Field normalization:**
+
 - `gameID` → `vendorProductId`
 - `steamAppID` → `external_id` (canonical matching key — stable across APIs)
 - `title` → `name` (use from deals response — more reliable than `external` from search)
@@ -454,38 +476,42 @@ No authentication required — all endpoints are open.
 
 **Store prices for the comparison table:**
 `getCurrentPrice(gameID)` calls `/deals?steamAppID={steamAppID}&pageSize=60` and returns:
+
 - `price` = minimum `salePrice` across all active-store deals
 - `store_prices` JSONB = `[{ storeName, storeId, price, dealUrl }]` for every active-store deal
 
 The service layer persists `storePrices` into the `store_prices` column of `price_snapshots`. The frontend reads this column to render the per-store comparison table.
 
 ### Phase 4 — Repositories
+
 Four files, each using `createServerClient()`. No business logic — queries only.
 
-| Repository | Key methods |
-|---|---|
-| `product.repository.ts` | upsertCanonical, upsertVendorProducts, findById, findByExternalId |
-| `price.repository.ts` | insertSnapshot, getHistory(days), getLatest |
+| Repository               | Key methods                                                              |
+| ------------------------ | ------------------------------------------------------------------------ |
+| `product.repository.ts`  | upsertCanonical, upsertVendorProducts, findById, findByExternalId        |
+| `price.repository.ts`    | insertSnapshot, getHistory(days), getLatest                              |
 | `wishlist.repository.ts` | findByUser, insert, delete (with userId check), getTrackedVendorProducts |
-| `cache.repository.ts` | get (30-min TTL check), set, hashQuery |
+| `cache.repository.ts`    | get (30-min TTL check), set, hashQuery                                   |
 
 All mutations include `.eq('user_id', userId)` — explicit IDOR protection layered under RLS.
 
 **Tests to write (Phase 4):** None — repositories are thin Supabase query wrappers with no branching logic. They are covered by service-layer tests that mock them, and by the live DB when run end-to-end. Do not write unit tests for queries.
 
 ### Phase 5 — Services
+
 Business logic layer. No HTTP, no raw SQL. Calls repositories and vendor adapters.
 
-| Service | Responsibility |
-|---|---|
-| `matching.service.ts` | Group VendorProducts by external_id (steamAppID), upsert canonical + vendor records |
-| `search.service.ts` | Cache check → fan-out to all adapters (7s timeout) → deduplicate → persist → cache |
-| `product.service.ts` | Assemble canonical + vendor prices + 90-day history for product page |
-| `wishlist.service.ts` | Add/remove items, ownership validation |
-| `alert.service.ts` | Check price thresholds, dispatch Resend emails, HMAC unsubscribe tokens |
-| `recommendation.service.ts` | Compute rule-based signal, call Groq for natural language, fallback to rule text |
+| Service                     | Responsibility                                                                      |
+| --------------------------- | ----------------------------------------------------------------------------------- |
+| `matching.service.ts`       | Group VendorProducts by external_id (steamAppID), upsert canonical + vendor records |
+| `search.service.ts`         | Cache check → fan-out to all adapters (7s timeout) → deduplicate → persist → cache  |
+| `product.service.ts`        | Assemble canonical + vendor prices + 90-day history for product page                |
+| `wishlist.service.ts`       | Add/remove items, ownership validation                                              |
+| `alert.service.ts`          | Check price thresholds, dispatch Resend emails, HMAC unsubscribe tokens             |
+| `recommendation.service.ts` | Compute rule-based signal, call Groq for natural language, fallback to rule text    |
 
 **Recommendation logic:**
+
 - Fetch 90-day `price_history_daily`
 - Compute: current vs. 90-day avg, 90-day min, 3-week trend
 - Signal: "buy" (price ≥20% below avg) / "wait" (trending down) / "neutral"
@@ -494,36 +520,38 @@ Business logic layer. No HTTP, no raw SQL. Calls repositories and vendor adapter
 
 **Tests to write (Phase 5):** Mock all repositories and adapters with `vi.fn()`. Test the service's decision logic, not the mocks.
 
-| Test file | Key cases |
-|---|---|
-| `search.service.test.ts` | Cache hit returns cached result without calling adapter; cache miss calls adapter + persists + caches; adapter timeout (7s) does not crash search |
-| `alert.service.test.ts` | Price above threshold → no email; price at/below threshold → Resend called; duplicate alert within cooldown → not re-sent; HMAC token verifies correctly; tampered token rejected |
-| `recommendation.service.test.ts` | Price ≥20% below 90d avg → "buy" signal; downward 3-week trend → "wait" signal; Groq unavailable → falls back to rule text without throwing |
-| `wishlist.service.test.ts` | Duplicate add rejected; remove with wrong userId rejected (ownership check) |
+| Test file                        | Key cases                                                                                                                                                                         |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search.service.test.ts`         | Cache hit returns cached result without calling adapter; cache miss calls adapter + persists + caches; adapter timeout (7s) does not crash search                                 |
+| `alert.service.test.ts`          | Price above threshold → no email; price at/below threshold → Resend called; duplicate alert within cooldown → not re-sent; HMAC token verifies correctly; tampered token rejected |
+| `recommendation.service.test.ts` | Price ≥20% below 90d avg → "buy" signal; downward 3-week trend → "wait" signal; Groq unavailable → falls back to rule text without throwing                                       |
+| `wishlist.service.test.ts`       | Duplicate add rejected; remove with wrong userId rejected (ownership check)                                                                                                       |
 
 ### Phase 6 — API Routes (Controllers)
+
 Thin. Each: parse Zod schema → optional `auth.requireUser()` → one service call → return JSON.
 
 **Tests to write (Phase 6):** Controllers have no logic — Zod + TypeScript coverage is sufficient. Write tests for the Zod schemas themselves instead.
 
-| Test file | Key cases |
-|---|---|
-| `search.schema.test.ts` | Empty string rejected; query over 100 chars rejected; valid short query passes |
+| Test file                 | Key cases                                                                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `search.schema.test.ts`   | Empty string rejected; query over 100 chars rejected; valid short query passes                         |
 | `wishlist.schema.test.ts` | Missing canonical_id rejected; negative target_price rejected; null target_price (remove alert) passes |
-| `alert.schema.test.ts` | Invalid HMAC token format rejected; valid token shape passes |
+| `alert.schema.test.ts`    | Invalid HMAC token format rejected; valid token shape passes                                           |
 
-| Route | Auth | Service |
-|---|---|---|
-| `GET /api/search?q=` | No | searchService.search |
-| `GET /api/products/[id]` | No | productService.getProductPage |
-| `GET /api/wishlist` | Yes | wishlistService.getUserWishlist |
-| `POST /api/wishlist` | Yes | wishlistService.addItem |
-| `DELETE /api/wishlist/[id]` | Yes | wishlistService.removeItem |
-| `PATCH /api/wishlist/[id]` | Yes | wishlistService.updateTarget |
-| `POST /api/ai/recommend` | Yes | recommendationService.getRecommendation |
-| `GET /api/unsubscribe?userId=&token=` | No (HMAC) | alertService.verifyUnsubToken |
+| Route                                 | Auth      | Service                                 |
+| ------------------------------------- | --------- | --------------------------------------- |
+| `GET /api/search?q=`                  | No        | searchService.search                    |
+| `GET /api/products/[id]`              | No        | productService.getProductPage           |
+| `GET /api/wishlist`                   | Yes       | wishlistService.getUserWishlist         |
+| `POST /api/wishlist`                  | Yes       | wishlistService.addItem                 |
+| `DELETE /api/wishlist/[id]`           | Yes       | wishlistService.removeItem              |
+| `PATCH /api/wishlist/[id]`            | Yes       | wishlistService.updateTarget            |
+| `POST /api/ai/recommend`              | Yes       | recommendationService.getRecommendation |
+| `GET /api/unsubscribe?userId=&token=` | No (HMAC) | alertService.verifyUnsubToken           |
 
 ### Phase 7 — Edge Function + pg_cron
+
 1. Implement `supabase/functions/poll-prices/index.ts` (Deno, self-contained):
    - Verify `Authorization: Bearer <CRON_SECRET>` header (NOT the service role key)
    - Query tracked vendor_products (those on any wishlist)
@@ -555,6 +583,7 @@ Thin. Each: parse Zod schema → optional `auth.requireUser()` → one service c
    to a public repo. `scripts/setup-cron-jobs.sql` uses placeholders and is a one-time manual step.
 
 ### Phase 8 — Frontend
+
 Build pages in order (each depends on the previous):
 
 1. **Landing** (`app/page.tsx`) — SearchBar (shadcn Command) + "How it works"
@@ -571,17 +600,17 @@ Build pages in order (each depends on the previous):
 
 ## Security
 
-| Concern | Mitigation |
-|---|---|
-| Unauthorized data access | RLS enabled on all tables from migration 002 |
-| IDOR | Every mutation includes `.eq('user_id', userId)` in repository layer |
-| Input injection | All API inputs validated with Zod before touching DB or vendor APIs |
-| API abuse | IP-based rate limiting in middleware.ts (in-memory, upgradeable to Upstash) |
-| Edge function abuse | CRON_SECRET verified in Authorization header (not the service role key) |
-| XSS via vendor data | JSX escaping by default; no dangerouslySetInnerHTML; Next.js Image for all product images |
-| Secret exposure | NEXT_PUBLIC_ prefix only for anon key + Supabase URL; all other keys server-side only |
-| CAN-SPAM | HMAC-signed unsubscribe token in every alert email |
-| SSRF (future) | URL allowlist when accepting user-provided product URLs |
+| Concern                  | Mitigation                                                                                |
+| ------------------------ | ----------------------------------------------------------------------------------------- |
+| Unauthorized data access | RLS enabled on all tables from migration 002                                              |
+| IDOR                     | Every mutation includes `.eq('user_id', userId)` in repository layer                      |
+| Input injection          | All API inputs validated with Zod before touching DB or vendor APIs                       |
+| API abuse                | IP-based rate limiting in middleware.ts (in-memory, upgradeable to Upstash)               |
+| Edge function abuse      | CRON_SECRET verified in Authorization header (not the service role key)                   |
+| XSS via vendor data      | JSX escaping by default; no dangerouslySetInnerHTML; Next.js Image for all product images |
+| Secret exposure          | NEXT*PUBLIC* prefix only for anon key + Supabase URL; all other keys server-side only     |
+| CAN-SPAM                 | HMAC-signed unsubscribe token in every alert email                                        |
+| SSRF (future)            | URL allowlist when accepting user-provided product URLs                                   |
 
 ---
 
@@ -605,20 +634,21 @@ CRON_SECRET=                      # random 32+ char string — verified by poll-
 
 ## Known Scalability Issues & Upgrade Paths
 
-| Issue | Current mitigation | Scale-up path |
-|---|---|---|
-| Edge function CPU limit (150ms) | Keep adapters lean, batch ≤50 products | Migrate to BullMQ + Upstash Redis |
-| Storage growth (free: 500MB) | Daily rollup + 7-day raw snapshot retention | Upgrade Supabase or tune retention |
-| CheapShark rate limit (no hard limit, be polite) | Max 1 req/sec, only poll wishlisted items | Per-vendor queues when adding paid vendors |
-| Railway response timeout | 7s ceiling timeout, return partial results | Upgrade Railway plan or use background jobs |
-| In-memory rate limiting resets | Acceptable for MVP | Replace with Upstash Rate Limiting |
-| Supabase connection pool (60 free) | PostgREST client in edge functions | Connection pooler (PgBouncer via Supabase) |
-| Auth migration | Full provider facade from day one | Swap lib/auth/providers/supabase.ts |
-| DB migration | SQL migration files, never dashboard | pg_dump / psql import to any PostgreSQL |
+| Issue                                            | Current mitigation                          | Scale-up path                               |
+| ------------------------------------------------ | ------------------------------------------- | ------------------------------------------- |
+| Edge function CPU limit (150ms)                  | Keep adapters lean, batch ≤50 products      | Migrate to BullMQ + Upstash Redis           |
+| Storage growth (free: 500MB)                     | Daily rollup + 7-day raw snapshot retention | Upgrade Supabase or tune retention          |
+| CheapShark rate limit (no hard limit, be polite) | Max 1 req/sec, only poll wishlisted items   | Per-vendor queues when adding paid vendors  |
+| Railway response timeout                         | 7s ceiling timeout, return partial results  | Upgrade Railway plan or use background jobs |
+| In-memory rate limiting resets                   | Acceptable for MVP                          | Replace with Upstash Rate Limiting          |
+| Supabase connection pool (60 free)               | PostgREST client in edge functions          | Connection pooler (PgBouncer via Supabase)  |
+| Auth migration                                   | Full provider facade from day one           | Swap lib/auth/providers/supabase.ts         |
+| DB migration                                     | SQL migration files, never dashboard        | pg_dump / psql import to any PostgreSQL     |
 
 ---
 
 ## Future Vendor Onboarding
+
 1. Write `src/vendors/adapters/<vendor>.ts` implementing `VendorAdapter`
 2. Add one line to `src/vendors/registry.ts`
 3. `INSERT INTO vendors VALUES ('<id>', '<name>', true, '{"rateLimit": N}');`
@@ -669,6 +699,7 @@ deploy-production:
 ```
 
 **Environment variable rules:**
+
 - `RAILWAY_TOKEN` — set in GitLab CI/CD Variables (masked + protected). Used by the pipeline to authenticate Railway deploys.
 - All app secrets (`SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, etc.) — set in Railway dashboard under the service's Variables tab. Railway injects them at runtime. They never touch GitLab.
 - CheapShark requires no credentials — no env var needed.

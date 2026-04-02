@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import type { Database } from '@/types/database.types'
 import type { NormalizedProduct } from '@/vendors/types'
 
@@ -8,7 +8,7 @@ type CanonicalProductRow = Database['public']['Tables']['canonical_products']['R
 // Finds an existing record and updates it, or inserts a new one.
 // Returns the canonical UUID.
 export async function upsertCanonical(product: NormalizedProduct): Promise<string> {
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   const { data: existing } = await supabase
     .from('canonical_products')
@@ -60,7 +60,7 @@ export async function upsertVendorProduct(
   vendorId: string,
   product: NormalizedProduct
 ): Promise<string> {
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   const { data, error } = await supabase
     .from('vendor_products')

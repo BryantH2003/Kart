@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import type { PriceHistoryPoint } from '@/types/api.types'
 import type { NormalizedProduct } from '@/vendors/types'
 
@@ -6,7 +6,7 @@ export async function insertSnapshot(
   vendorProductId: string,
   product: NormalizedProduct
 ): Promise<void> {
-  const supabase = await createClient()
+  const supabase = createAdminClient()
 
   const storePrices = product.storePrices?.map((s) => ({
     storeId: s.storeId,

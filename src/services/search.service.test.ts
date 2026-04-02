@@ -12,6 +12,8 @@ vi.mock('@/vendors/registry', () => ({
 }))
 
 vi.mock('@/services/matching.service', () => ({
+  upsertCanonicalOnly: vi.fn().mockResolvedValue('canonical-uuid'),
+  persistVendorData: vi.fn().mockResolvedValue(undefined),
   persistProduct: vi.fn().mockResolvedValue('canonical-uuid'),
 }))
 

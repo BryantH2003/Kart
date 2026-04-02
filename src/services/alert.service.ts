@@ -100,3 +100,14 @@ async function sendAlertEmail(
     triggered_price: triggeredPrice,
   })
 }
+
+// Unsubscribes a user from all price alerts by nulling out their target prices.
+// Wishlist items are kept — only the alert threshold is cleared.
+export async function unsubscribeUser(userId: string): Promise<void> {
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('wishlists')
+    .update({ target_price: null })
+    .eq('user_id', userId)
+  if (error) throw new Error(`unsubscribeUser failed: ${error.message}`)
+}
