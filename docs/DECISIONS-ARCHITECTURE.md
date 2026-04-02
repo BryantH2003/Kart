@@ -238,4 +238,56 @@ None significant. This is a breaking rename in the framework. The only risk is f
 
 ---
 
+## 11. Fire-and-Forget Persistence in the Search Path
+
+### The Problem
+When a user searches for a product, the search service fans out to all vendor adapters, collects results, and needs to persist them to the database (upsert canonical product, upsert vendor product, insert price snapshot). The question was: should the HTTP response wait for all DB writes to complete before returning?
+
+### The Options
+**Option A — Await persistence before responding:** The user waits for every DB write to complete before seeing results. If the database is slow or experiencing a transient error, the search response is delayed or fails entirely. A user searching for a product pays the cost of three sequential Supabase round-trips they didn't ask for.
+
+**Option B — Fire-and-forget:** Call `persistProduct()` without awaiting it. The search response returns immediately with the results. DB writes happen in the background. If they fail, the cache misses the write for this query, but the user still sees correct results — they just won't be persisted this time.
+
+### The Decision
+Option B. Persistence errors are non-fatal for the search response. The worst outcome is a cache miss on the next identical query — the adapter will be called again and persistence will be retried. The user experience is never degraded by a slow or failing database in the search path.
+
+The `.catch(() => {})` on the fire-and-forget call is intentional: without it, an unhandled promise rejection would crash the Node.js process in some environments.
+
+### The Trade-off
+Persistence is eventually consistent, not immediate. In the brief window between the search returning and the DB write completing, the product won't appear in wishlist lookups by canonical ID. For the search → product detail flow this is acceptable. For any flow that requires the canonical ID immediately after search (e.g. "add to wishlist" from a search result), the frontend must use the canonical ID returned by the search result, not assume it's already persisted.
+
+---
+
+## 12. Stateless Alert Deduplication via the Database
+
+### The Problem
+The alert service needs to avoid sending duplicate emails — if a game stays below a user's target price for multiple polling cycles, they should get one alert per day, not one per hour.
+
+### The Options
+**Option A — In-memory deduplication:** Track a `Set<string>` of recently-alerted `userId:vendorProductId` pairs in process memory. Fast, no DB round-trip. Problem: the memory resets on every deploy and is not shared across multiple Railway instances. With Railway's auto-deploy on every push, this means the cooldown window resets multiple times per day, allowing duplicate alerts through.
+
+**Option B — DB-backed deduplication:** Query `alerts_sent` for any row matching `(user_id, vendor_product_id)` within the last 24 hours before sending. One extra DB read per user per product check. The result is correct across deploys, restarts, and horizontal scaling.
+
+### The Decision
+Option B. The alert service is already making DB reads for wishlist rows. One extra query per user is acceptable. The `idx_alerts_sent_dedup` composite index on `(user_id, vendor_product_id, sent_at DESC)` makes this check fast even when the table has years of history.
+
+The rule: any deduplication that must survive a process restart belongs in the database, not in memory.
+
+---
+
+## 13. AI Recommendation Fallback: Rule-Based Text When Groq Is Unavailable
+
+### The Problem
+The recommendation service calls the Groq API to generate a natural-language buy/wait recommendation. Groq is a third-party free-tier service. It can be unavailable, rate-limited, or slow. If the recommendation endpoint throws when Groq is down, the product page breaks for all users.
+
+### The Decision
+The service computes a deterministic signal (`buy`, `wait`, `neutral`) from the price history before ever calling Groq. If the Groq API call throws for any reason, the service catches the error and returns the pre-computed rule-based text instead. The endpoint always returns a valid `RecommendationResponse` — Groq's availability only affects whether the text is AI-generated or rule-based.
+
+This also means the recommendation logic is fully unit-testable without mocking an AI API — the signal computation is pure TypeScript math, and the Groq fallback is verified by a single test that injects a rejected promise.
+
+### The Trade-off
+The fallback text is generic. A user seeing `"This is a good time to buy — the price is significantly below its historical average."` gets the same sentence every time the price is low. This is acceptable for an MVP but should be replaced with more varied templates if Groq remains unavailable frequently.
+
+---
+
 *Add an entry here whenever a pattern, technology choice, or system-level structure decision is made. Focus on the "why" — what problem was being solved and what alternatives were ruled out.*

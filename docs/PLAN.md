@@ -9,12 +9,12 @@
 | 2 — Project scaffold | ✅ Complete | Next.js 16, shadcn/ui, all lib files, middleware, Zod schemas |
 | 3 — Vendor adapter layer | ✅ Complete | CheapShark adapter + registry; Vitest + MSW; 14 tests passing |
 | 4 — Repositories | ✅ Complete | 4 repositories; typecheck passes |
-| 5 — Services | 🔜 Next | |
-| 6 — API routes | ⬜ Pending | |
+| 5 — Services | ✅ Complete | 6 services; 35 tests passing |
+| 6 — API routes | 🔜 Next | |
 | 7 — Edge function + pg_cron | ⬜ Pending | |
 | 8 — Frontend | ⬜ Pending | |
 
-**Resume point:** Begin Phase 5 — create services in `src/services/`: `matching.service.ts`, `search.service.ts`, `product.service.ts`, `wishlist.service.ts`, `alert.service.ts`, `recommendation.service.ts`.
+**Resume point:** Begin Phase 6 — create API route handlers in `src/app/api/`: `search/route.ts`, `products/[id]/route.ts`, `wishlist/route.ts`, `wishlist/[id]/route.ts`, `alerts/route.ts`, `unsubscribe/route.ts`, `ai/recommend/route.ts`.
 
 ### Testing setup (do once at the start of Phase 3)
 ```bash

@@ -160,4 +160,38 @@ The union types in `types.ts` are a manual reflection of the database CHECK cons
 
 ---
 
+## 6. HMAC Unsubscribe Tokens with Timing-Safe Comparison
+
+### The Problem
+Every price alert email includes an unsubscribe link. The link must be unforgeable (users shouldn't be able to unsubscribe other users by guessing a URL) and must not require a database lookup to verify (the unsubscribe endpoint should be stateless).
+
+### The Decision
+Tokens are generated as `HMAC-SHA256(userId, UNSUBSCRIBE_SECRET)`. The secret never leaves the server. Verification recomputes the expected HMAC and compares with `crypto.timingSafeEqual()` rather than `===`.
+
+The timing-safe comparison matters: a naive string comparison (`token === expected`) short-circuits on the first differing character, leaking information about how close a guess is. `timingSafeEqual` always takes the same amount of time regardless of where the strings differ, preventing timing oracle attacks.
+
+### The Trade-off
+The token is tied to the user ID, not to a specific alert or product. This means one token unsubscribes a user from all future alerts, not just one product's alerts. Per-product unsubscribe would require storing a token per alert row in the DB, adding complexity with little user benefit for an MVP. The trade-off is intentional and documented.
+
+---
+
+## 7. Mocking Library Clients at Module Load Time in Tests
+
+### The Problem
+`src/lib/resend.ts` calls `new Resend(process.env.RESEND_API_KEY)` at module load time. When a test file imports `alert.service.ts`, which imports `resend.ts`, the `Resend` constructor fires immediately — before any test setup runs. Without a real API key in the test environment, this throws `"Missing API key"` and the entire test file fails before a single test runs.
+
+The same pattern applies to `groq.ts` and any other library that validates credentials on construction.
+
+### The Fix
+Mock the entire `@/lib/resend` and `@/lib/groq` modules at the top of test files using `vi.mock(...)` before the imports. Vitest hoists `vi.mock()` calls to the top of the file regardless of where they appear in source order, so the mock is in place before any module is evaluated.
+
+```typescript
+vi.mock('@/lib/resend', () => ({ resend: { emails: { send: vi.fn() } } }))
+```
+
+### The Rule
+Any library that validates credentials or makes network calls in its constructor must be mocked at the module level in tests. Do not stub individual methods — replace the entire module export. This prevents constructor side effects from polluting the test environment.
+
+---
+
 *Add an entry here whenever a code-level decision is made that isn't obvious from reading the code alone — performance trade-offs, implementation quirks, non-obvious TypeScript patterns, or tooling configuration choices.*
