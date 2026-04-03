@@ -1,26 +1,122 @@
 @import "tailwindcss";
 
+/* ── Kart — Vibrant Shopping Theme ───────────────────────────────────────────
+   Light: pure white canvas, vivid violet primary, hot orange deal accents
+   Dark:  deep purple-black surfaces, bright violet, vivid orange accents
+   ──────────────────────────────────────────────────────────────────────────── */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Backgrounds */
+  --background: 0 0% 99%; /* #FCFCFC near-white */
+  --foreground: 252 30% 8%; /* #0D0A1A deep purple-black */
+
+  /* Cards / surfaces */
+  --card: 0 0% 100%; /* #FFFFFF pure white */
+  --card-foreground: 252 30% 8%;
+
+  /* Popovers */
+  --popover: 0 0% 100%;
+  --popover-foreground: 252 30% 8%;
+
+  /* Primary — vivid violet */
+  --primary: 258 90% 56%; /* #6D28D9 → rich violet */
+  --primary-foreground: 0 0% 100%;
+
+  /* Secondary — soft violet tint */
+  --secondary: 258 70% 95%; /* #EDE9FF */
+  --secondary-foreground: 258 50% 30%;
+
+  /* Muted — warm off-white */
+  --muted: 252 20% 95%; /* #F3F2FA */
+  --muted-foreground: 252 12% 46%; /* #716C8A */
+
+  /* Accent — hot orange (deal price, buy signal, CTA) */
+  --accent: 25 97% 53%; /* #F97016 vivid orange */
+  --accent-foreground: 0 0% 100%;
+
+  /* Destructive */
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  /* Borders & inputs */
+  --border: 252 18% 88%; /* #DDD9EE */
+  --input: 252 18% 88%;
+  --ring: 258 90% 56%;
+
+  /* Chart colors */
+  --chart-1: 258 90% 56%; /* violet  — primary line */
+  --chart-2: 25 97% 53%; /* orange  — deal price */
+  --chart-3: 168 84% 40%; /* teal    — target price */
+  --chart-4: 199 89% 48%; /* sky     — avg price */
+  --chart-5: 333 80% 55%; /* pink    — AI signal */
+
+  --radius: 0.75rem;
+}
+
+.dark {
+  /* Backgrounds */
+  --background: 252 45% 6%; /* #080613 deep purple-black */
+  --foreground: 252 20% 93%; /* #EAE8F5 */
+
+  /* Cards / surfaces */
+  --card: 252 38% 10%; /* #100E1F slightly lighter */
+  --card-foreground: 252 20% 93%;
+
+  /* Popovers */
+  --popover: 252 38% 10%;
+  --popover-foreground: 252 20% 93%;
+
+  /* Primary — brighter violet on dark */
+  --primary: 258 85% 68%; /* #9B6DFF bright violet */
+  --primary-foreground: 252 45% 6%;
+
+  /* Secondary */
+  --secondary: 252 32% 16%; /* #1A1630 */
+  --secondary-foreground: 252 20% 78%;
+
+  /* Muted */
+  --muted: 252 30% 13%; /* #141025 */
+  --muted-foreground: 252 15% 55%; /* #8682A4 */
+
+  /* Accent — slightly brighter orange on dark */
+  --accent: 25 100% 58%; /* #FF7E1A */
+  --accent-foreground: 252 45% 6%;
+
+  /* Destructive */
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+
+  /* Borders & inputs */
+  --border: 252 28% 18%; /* #211C38 */
+  --input: 252 28% 18%;
+  --ring: 258 85% 68%;
+
+  /* Chart colors */
+  --chart-1: 258 85% 68%;
+  --chart-2: 25 100% 58%;
+  --chart-3: 168 80% 48%;
+  --chart-4: 199 89% 55%;
+  --chart-5: 333 80% 62%;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-geist-sans), Arial, sans-serif;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Smooth theme transition */
+*,
+*::before,
+*::after {
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease;
 }

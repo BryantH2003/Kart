@@ -327,4 +327,45 @@ Keeping them separate means each can fail independently, be paused independently
 
 ---
 
+---
+
+## 8. Frontend Theme System: CSS Variables Over Component-Level Theming
+
+### The Problem
+React component libraries commonly theme by accepting a color prop or theme object at the component level. shadcn/ui takes a different approach — it generates components that read CSS custom properties (`var(--primary)`, `var(--background)`, etc.) at render time. That means the theme is controlled entirely through CSS variable values on `:root` and `.dark`, and dark mode is toggled by adding a `dark` class to the `<html>` element.
+
+### The Decision
+We adopted this model directly and defined a "Soft Slate" color palette — cool-gray backgrounds, indigo primary, emerald deal accents — across both light and dark variants in `globals.css`. All colors are expressed as bare HSL triplets (e.g. `231 90% 64%`) without the `hsl()` wrapper so they can be composed with opacity via Tailwind's `bg-primary/10` syntax.
+
+The `next-themes` library handles the `dark` class toggle. `ThemeProvider` wraps the app in `layout.tsx` with `attribute="class"` and `enableSystem`, which means the user's OS preference is respected on first load. `suppressHydrationWarning` on `<html>` prevents a React hydration mismatch when the server renders with no class and the client immediately applies the system theme.
+
+### Trade-offs
+- **Pro:** Every shadcn component participates in the theme automatically — no extra wiring.
+- **Pro:** Adding a third theme (e.g. "high contrast") is a new CSS block, no component changes.
+- **Con:** The bare HSL syntax is non-obvious to newcomers who expect `#4F6EF7`.
+- **Con:** CSS variable names (`--chart-1`, `--muted-foreground`) are opaque without reading the palette definition.
+
+### General principle
+Define the theme once in CSS variables, not in JavaScript. Keep the JavaScript layer (ThemeToggle, ThemeProvider) minimal — its only job is to add/remove the `dark` class.
+
+---
+
+## 9. Server-Side API Calls in Server Components: Base URL Strategy
+
+### The Problem
+Next.js server components and server-side data fetching can't use relative URLs (`/api/search`) because there's no implicit base URL in a Node.js process. The `fetch` call needs a fully qualified URL.
+
+### Options Considered
+1. **Call the service directly** — skip the HTTP layer entirely and import the service function. Eliminates the round-trip but couples the RSC to the service layer and bypasses any HTTP-level middleware (rate limiting, auth checks).
+2. **Hardcode `localhost:3000`** — works locally but breaks in production where the hostname and port are different.
+3. **`NEXT_PUBLIC_SITE_URL` env var** — set in Vercel to the deployment URL. Falls back to `http://localhost:3000` for local dev.
+
+### The Decision
+Server components use `process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'` as the base URL for internal API calls. In production on Vercel, `NEXT_PUBLIC_SITE_URL` must be set to the deployment URL.
+
+For the wishlist page specifically, we took option 1 — calling the service directly — because the wishlist page is always auth-gated and already uses the Supabase server client, so there's no benefit to making an HTTP call to itself.
+
+### General principle
+Prefer calling services directly from server components when the route is auth-gated and there's no middleware benefit from going through HTTP. Use the base URL pattern for public pages (search, product) where caching and eventual CDN placement may matter.
+
 *Add an entry here whenever a pattern, technology choice, or system-level structure decision is made. Focus on the "why" — what problem was being solved and what alternatives were ruled out.*

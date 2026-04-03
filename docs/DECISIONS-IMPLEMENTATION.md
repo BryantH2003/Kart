@@ -224,4 +224,39 @@ The UUID detection regex in the service is a minor code smell — ideally the ca
 
 ---
 
+---
+
+## 8. Recharts Integration: Bare HSL Values in `stroke` and `fill`
+
+### The Problem
+shadcn/ui's `ChartContainer` component wraps Recharts and injects CSS variable values as data attributes. But the `PriceHistoryChart` bypasses `ChartContainer` to avoid the additional abstraction layer — the chart is simple enough (three Area series, no tooltip portal) that the wrapper adds complexity without benefit.
+
+The issue is that Recharts `stroke` and `fill` props accept color strings, not CSS variable references. Writing `stroke="var(--chart-1)"` works in SVG but Recharts applies it inline — browsers resolve CSS variables in stylesheets but **not** in inline SVG `stroke` attributes in all environments.
+
+### The Decision
+Inline the HSL value as a template: `stroke="hsl(var(--chart-1))"`. This works because `hsl()` is a CSS function that browsers resolve even in inline styles, unlike bare `var()` references in some SVG contexts.
+
+The same pattern applies to CartesianGrid and axis tick colors: `stroke="hsl(var(--border))"`, `fill="hsl(var(--muted-foreground))"`. The Tooltip's `contentStyle` object uses the same pattern for background and border.
+
+### Trade-off
+The price history chart doesn't automatically respond to a future theme variable rename — the string `hsl(var(--chart-1))` is embedded in component code. This is acceptable because chart colors are stable and the alternative (hooking into `useTheme` and resolving CSS variables at runtime) is significantly more complex.
+
+---
+
+## 9. Wishlist Page: Server Component With Direct Service Call
+
+### The Problem
+The wishlist page is auth-gated. It needs the user's session to (a) redirect to login if unauthenticated and (b) fetch the right user's wishlist items. Two approaches:
+
+1. **Client component** — fetch on mount, handle loading state in JS. Requires a spinner; the auth check happens client-side (visible flash before redirect).
+2. **Server component with direct service call** — call `createClient()` on the server, check auth, call `getUserWishlist(userId)` directly. No HTTP round-trip, no loading state, auth redirect happens before the page renders.
+
+### The Decision
+Server component with direct service import. The wishlist page calls `supabase.auth.getUser()` on the server and either redirects immediately or passes the userId into the service. No client-side auth check is needed.
+
+The `WishlistRow` delete action uses a native `<form method="POST">` pointing at the API route, with a hidden `_method: DELETE` field. This works without JavaScript and is idiomatic for server-rendered pages. A future enhancement could replace it with a client component for optimistic UI.
+
+### Trade-off
+The server component imports from `@/services/wishlist.service` — a direct coupling that bypasses the HTTP controller layer. This is intentional for auth-gated server renders but means the service must work correctly when called outside of an HTTP request context (it does, since services have no HTTP dependencies).
+
 *Add an entry here whenever a code-level decision is made that isn't obvious from reading the code alone — performance trade-offs, implementation quirks, non-obvious TypeScript patterns, or tooling configuration choices.*
