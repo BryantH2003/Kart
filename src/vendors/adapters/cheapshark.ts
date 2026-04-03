@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { VendorAdapter, SearchResult, NormalizedProduct, VendorStorePrice } from '../types'
+import type { VendorAdapter, BrowseOptions, SearchResult, NormalizedProduct, VendorStorePrice, ProductCategory } from '../types'
 
 const BASE_URL = 'https://www.cheapshark.com/api/1.0'
 
@@ -26,12 +26,14 @@ const DealSchema = z.object({
   normalPrice: z.string(),
   isOnSale: z.string(),        // "0" or "1"
   metacriticScore: z.string(), // "0" when unscored
-  steamRatingText: z.string().optional(),
-  steamRatingPercent: z.string().optional(),
-  steamRatingCount: z.string().optional(),
-  steamAppID: z.string().optional(),
+  // The general /deals endpoint (no steamAppID filter) returns null for these
+  // optional fields rather than omitting them — use nullish() to accept both.
+  steamRatingText: z.string().nullish(),
+  steamRatingPercent: z.string().nullish(),
+  steamRatingCount: z.string().nullish(),
+  steamAppID: z.string().nullish(),
   releaseDate: z.number().optional(), // Unix timestamp (seconds)
-  thumb: z.string().optional(),
+  thumb: z.string().nullish(),
   dealRating: z.string().optional(),
   lastChange: z.number().optional(),
 })
@@ -46,8 +48,16 @@ const StoresResponseSchema = z.array(StoreSchema)
 
 // ── Adapter ───────────────────────────────────────────────────────────────────
 
+const SORT_MAP: Record<NonNullable<BrowseOptions['sortBy']>, string> = {
+  popular:      'sortBy=DealRating',
+  rating:       'sortBy=Metacritic&desc=1',
+  price_asc:    'sortBy=Price&desc=0',
+  new_releases: 'sortBy=Release&desc=1',
+}
+
 export class CheapSharkAdapter implements VendorAdapter {
   readonly vendorId = 'cheapshark'
+  readonly browseableCategories: readonly ProductCategory[] = ['game']
 
   // Cache the in-flight Promise (not the resolved Map) so concurrent callers
   // all await the same fetch rather than each issuing their own /stores request.
@@ -95,6 +105,36 @@ export class CheapSharkAdapter implements VendorAdapter {
         cheapestPrice: parseFloat(g.cheapest),
         category: 'game' as const,
       }))
+  }
+
+  async browse(options: BrowseOptions): Promise<SearchResult[]> {
+    const sortParam = SORT_MAP[options.sortBy ?? 'popular']
+    const pageSize = options.pageSize ?? 60
+    const pageNumber = (options.pageNumber ?? 1) - 1  // CheapShark is 0-indexed
+    const url = `${BASE_URL}/deals?${sortParam}&pageSize=${pageSize}&pageNumber=${pageNumber}`
+
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`CheapShark /deals returned ${res.status}`)
+    const deals = DealsResponseSchema.parse(await res.json())
+
+    // /deals returns one row per store per game — deduplicate by steamAppID,
+    // keeping the first (cheapest per the requested sort) entry for each game.
+    const seen = new Set<string>()
+    const results: SearchResult[] = []
+    for (const d of deals) {
+      if (!d.steamAppID || d.steamAppID === '' || seen.has(d.steamAppID)) continue
+      seen.add(d.steamAppID)
+      results.push({
+        externalId: d.steamAppID,
+        externalIdType: 'steam_app_id' as const,
+        vendorProductId: d.steamAppID,
+        name: d.title,
+        imageUrl: d.thumb || undefined,
+        cheapestPrice: parseFloat(d.salePrice),
+        category: 'game' as const,
+      })
+    }
+    return results
   }
 
   async getProduct(vendorProductId: string): Promise<NormalizedProduct | null> {

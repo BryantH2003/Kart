@@ -68,8 +68,18 @@ export interface NormalizedProduct {
   storePrices?: VendorStorePrice[]
 }
 
+export interface BrowseOptions {
+  category: ProductCategory
+  sortBy?: 'popular' | 'rating' | 'price_asc' | 'new_releases'
+  pageSize?: number
+  pageNumber?: number
+}
+
 export interface VendorAdapter {
   readonly vendorId: string
+  // Declare which categories this adapter can browse. Omit if browse is not supported.
+  readonly browseableCategories?: readonly ProductCategory[]
   search(query: string): Promise<SearchResult[]>
   getProduct(vendorProductId: string): Promise<NormalizedProduct | null>
+  browse?(options: BrowseOptions): Promise<SearchResult[]>
 }

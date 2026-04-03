@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ShoppingCart, Search, Heart } from 'lucide-react'
+import { ShoppingCart, Search, Heart, LayoutGrid } from 'lucide-react'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { Button } from '@/components/ui/button'
 
@@ -17,6 +17,12 @@ export function Navbar() {
 
         {/* Nav links */}
         <nav className="hidden items-center gap-1 sm:flex">
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/browse" className="flex items-center gap-1.5">
+              <LayoutGrid className="h-4 w-4" />
+              Browse
+            </Link>
+          </Button>
           <Button variant="ghost" size="sm" asChild>
             <Link href="/search" className="flex items-center gap-1.5">
               <Search className="h-4 w-4" />
