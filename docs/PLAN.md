@@ -11,10 +11,10 @@
 | 4 — Repositories            | ✅ Complete | 4 repositories; typecheck passes                              |
 | 5 — Services                | ✅ Complete | 6 services; 35 tests passing                                  |
 | 6 — API routes              | ✅ Complete | 8 routes; 55 tests passing                                    |
-| 7 — Edge function + pg_cron | ⬜ Pending  |                                                               |
+| 7 — Edge function + pg_cron | ✅ Complete | poll-prices deployed; 2 cron jobs registered                  |
 | 8 — Frontend                | ⬜ Pending  |                                                               |
 
-**Resume point:** Begin Phase 7 — implement the Supabase Edge Function at `supabase/functions/poll-prices/index.ts` and register pg_cron jobs via `scripts/setup-cron-jobs.sql`.
+**Resume point:** Begin Phase 8 — build frontend pages in `src/app/`: landing, search results, product detail, wishlist, and auth.
 
 ### Testing setup (do once at the start of Phase 3)
 

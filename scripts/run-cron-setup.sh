@@ -21,11 +21,18 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 
-# Source the file, skipping blank lines and comment-only lines
-set -a
-# shellcheck disable=SC1090
-source <(grep -v '^\s*#' "$ENV_FILE" | grep -v '^\s*$')
-set +a
+# Parse .env.local line by line — handles values with spaces, quotes, and special chars
+while IFS='=' read -r key value || [[ -n "$key" ]]; do
+  # Skip blank lines and comments
+  [[ -z "$key" || "$key" =~ ^\s*# ]] && continue
+  # Strip leading/trailing whitespace from key
+  key="${key#"${key%%[![:space:]]*}"}"
+  key="${key%"${key##*[![:space:]]}"}"
+  # Strip surrounding quotes from value (single or double)
+  value="${value%\'}" ; value="${value#\'}"
+  value="${value%\"}" ; value="${value#\"}"
+  export "$key=$value"
+done < "$ENV_FILE"
 
 # ── Validate required vars ────────────────────────────────────────────────────
 : "${CRON_SECRET:?CRON_SECRET is not set in .env.local. Generate one with: openssl rand -hex 32}"
@@ -39,5 +46,5 @@ trap 'rm -f "$TMPFILE"' EXIT
 envsubst '${CRON_SECRET} ${SUPABASE_PROJECT_ID}' < "$SQL_TEMPLATE" > "$TMPFILE"
 
 echo "Setting up cron jobs for project: $SUPABASE_PROJECT_ID"
-supabase db execute --file "$TMPFILE"
+supabase db query --linked --file "$TMPFILE"
 echo "Done."

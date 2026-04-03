@@ -1,5 +1,5 @@
 import crypto from 'crypto'
-import { resend } from '@/lib/resend'
+import { getResendClient } from '@/lib/resend'
 import { createClient } from '@/lib/supabase/server'
 import type { TrackedVendorProduct } from '@/repositories/wishlist.repository'
 
@@ -83,7 +83,7 @@ async function sendAlertEmail(
   const unsubToken = generateUnsubToken(userId)
   const unsubUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('supabase.co', 'railway.app')}/api/unsubscribe?userId=${userId}&token=${unsubToken}`
 
-  await resend.emails.send({
+  await getResendClient().emails.send({
     from: process.env.RESEND_FROM_EMAIL!,
     to: email,
     subject: `Price drop: ${productName} is now $${triggeredPrice.toFixed(2)}`,

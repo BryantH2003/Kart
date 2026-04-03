@@ -290,4 +290,41 @@ The fallback text is generic. A user seeing `"This is a good time to buy — the
 
 ---
 
+## 14. Edge Function Is Self-Contained — No Shared Code With Next.js
+
+### The Problem
+The poll-prices Edge Function runs in Deno, not Node.js. It cannot import from `@/services/`, `@/repositories/`, or any other Next.js source file. The question was how to share the business logic (CheapShark API calls, alert threshold checking, HMAC token generation) between the Next.js app and the edge function without duplicating it.
+
+### The Options
+**Option A — Shared package:** Extract shared logic into a `packages/shared/` directory. Both the Next.js app and the edge function import from it. This is the monorepo approach and was already ruled out in Decision #8 — the project has one deployable artifact and the overhead of workspace tooling isn't justified.
+
+**Option B — Self-contained edge function:** The edge function reimplements the logic it needs directly. The CheapShark fetch, alert check, HMAC generation, and Resend call are each under 20 lines. Duplication at this scale is less costly than introducing a shared package dependency across two runtimes.
+
+### The Decision
+Option B. The edge function is fully self-contained. It uses the Web Crypto API (built into Deno) for HMAC generation instead of Node's `crypto` module, and calls the Resend REST API directly with `fetch` instead of importing the SDK. Any logic change that affects both the app and the polling job (e.g. changing the alert cooldown window) requires updating two files — this is an accepted trade-off documented here so future readers know why the code looks duplicated.
+
+---
+
+## 15. Two Cron Jobs Instead of One
+
+### The Problem
+The polling job (run hourly) and the data cleanup job (run nightly) serve different purposes and have different failure modes. If they were combined into one job that ran hourly, a bug in the aggregation SQL would block price polling every hour. A bug in the poll would block cleanup every night.
+
+### The Decision
+Two separate pg_cron jobs with different schedules:
+- `poll-prices-hourly` — runs at `0 * * * *`, calls the Edge Function via HTTP POST. Stateless from the DB's perspective — if it fails, the next run picks up where it left off (stalest products first).
+- `aggregate-daily-prices` — runs at `5 0 * * *`, pure SQL. Rolls up hourly snapshots to daily, then deletes data past the retention windows.
+
+Keeping them separate means each can fail independently, be paused independently, and be debugged independently via `cron.job_run_details` in Supabase.
+
+### Retention Windows (what the cleanup job enforces)
+| Table | Retention | Reason |
+|---|---|---|
+| `price_snapshots` | 7 days | Raw hourly data rolled up nightly — no need to keep the source |
+| `search_cache` | 30 minutes | TTL cache — stale entries waste storage and serve wrong results |
+| `alerts_sent` | 90 days | Dedup window is 24 hours; 90 days gives audit history without unbounded growth |
+| `price_history_daily` | Forever | This is the permanent record — the whole point of the polling pipeline |
+
+---
+
 *Add an entry here whenever a pattern, technology choice, or system-level structure decision is made. Focus on the "why" — what problem was being solved and what alternatives were ruled out.*

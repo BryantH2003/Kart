@@ -1,4 +1,4 @@
-import { groq } from '@/lib/groq'
+import { getGroqClient } from '@/lib/groq'
 import * as priceRepo from '@/repositories/price.repository'
 import type { RecommendationResponse } from '@/types/api.types'
 import type { PriceHistoryPoint } from '@/types/api.types'
@@ -54,7 +54,7 @@ Price trend (last 3 weeks): ${summary.trend}
 Signal: ${signal}`
 
   try {
-    const completion = await groq.chat.completions.create({
+    const completion = await getGroqClient().chat.completions.create({
       model: 'llama3-8b-8192',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 100,

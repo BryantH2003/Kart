@@ -4,18 +4,14 @@ vi.mock('@/repositories/price.repository', () => ({
   getHistory: vi.fn(),
 }))
 
+const mockCreate = vi.fn()
 vi.mock('@/lib/groq', () => ({
-  groq: {
-    chat: {
-      completions: {
-        create: vi.fn(),
-      },
-    },
-  },
+  getGroqClient: () => ({
+    chat: { completions: { create: mockCreate } },
+  }),
 }))
 
 import * as priceRepo from '@/repositories/price.repository'
-import { groq } from '@/lib/groq'
 import { getRecommendation } from '@/services/recommendation.service'
 import type { PriceHistoryPoint } from '@/types/api.types'
 
@@ -28,13 +24,11 @@ function makeHistory(prices: number[]): PriceHistoryPoint[] {
   }))
 }
 
-const groqMock = vi.mocked(groq.chat.completions.create)
-
 beforeEach(() => {
   vi.clearAllMocks()
-  groqMock.mockResolvedValue({
+  mockCreate.mockResolvedValue({
     choices: [{ message: { content: 'Groq says buy now.' } }],
-  } as never)
+  })
 })
 
 describe('getRecommendation()', () => {
@@ -75,7 +69,7 @@ describe('getRecommendation()', () => {
 
   it('falls back to rule-based text when Groq throws', async () => {
     vi.mocked(priceRepo.getHistory).mockResolvedValue(makeHistory(Array(30).fill(20)))
-    groqMock.mockRejectedValue(new Error('Groq API error'))
+    mockCreate.mockRejectedValue(new Error('Groq API error'))
 
     const result = await getRecommendation('vp-1', 14) // buy signal
     expect(result.signal).toBe('buy')
@@ -84,7 +78,7 @@ describe('getRecommendation()', () => {
 
   it('uses Groq narrative when available', async () => {
     vi.mocked(priceRepo.getHistory).mockResolvedValue(makeHistory(Array(30).fill(20)))
-    groqMock.mockResolvedValue({
+    mockCreate.mockResolvedValue({
       choices: [{ message: { content: 'Great deal, grab it now!' } }],
     } as never)
 
