@@ -68,6 +68,6 @@ export async function search(query: string): Promise<SearchResultItem[]> {
     }
   }
 
-  await cacheRepo.set(queryHash, items)
+  await cacheRepo.set(queryHash, items).catch(() => {/* non-fatal — stale cache is acceptable */})
   return items
 }

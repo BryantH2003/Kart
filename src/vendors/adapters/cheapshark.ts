@@ -3,6 +3,14 @@ import type { VendorAdapter, BrowseOptions, SearchResult, NormalizedProduct, Ven
 
 const BASE_URL = 'https://www.cheapshark.com/api/1.0'
 
+// CheapShark is behind Cloudflare, which blocks requests without a User-Agent
+// (common when calling from cloud provider IPs like Railway/AWS/GCP).
+// A browser-style UA is required for requests to pass Cloudflare's bot check.
+const FETCH_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (compatible; Kart/1.0; price-tracker)',
+  'Accept': 'application/json',
+}
+
 // ── Zod schemas for raw API responses ────────────────────────────────────────
 // CheapShark returns all numeric values as strings except releaseDate (Unix int).
 
@@ -66,7 +74,7 @@ export class CheapSharkAdapter implements VendorAdapter {
 
   private fetchStoreNames(): Promise<Map<string, string>> {
     if (!this.storeNamesPromise) {
-      this.storeNamesPromise = fetch(`${BASE_URL}/stores`)
+      this.storeNamesPromise = fetch(`${BASE_URL}/stores`, { headers: FETCH_HEADERS })
         .then(res => {
           if (!res.ok) throw new Error(`CheapShark /stores returned ${res.status}`)
           return res.json()
@@ -88,7 +96,7 @@ export class CheapSharkAdapter implements VendorAdapter {
 
   async search(query: string): Promise<SearchResult[]> {
     const url = `${BASE_URL}/games?title=${encodeURIComponent(query)}&limit=20`
-    const res = await fetch(url)
+    const res = await fetch(url, { headers: FETCH_HEADERS })
     if (!res.ok) throw new Error(`CheapShark /games returned ${res.status}`)
     const games = GamesResponseSchema.parse(await res.json())
 
@@ -113,7 +121,7 @@ export class CheapSharkAdapter implements VendorAdapter {
     const pageNumber = (options.pageNumber ?? 1) - 1  // CheapShark is 0-indexed
     const url = `${BASE_URL}/deals?${sortParam}&pageSize=${pageSize}&pageNumber=${pageNumber}`
 
-    const res = await fetch(url)
+    const res = await fetch(url, { headers: FETCH_HEADERS })
     if (!res.ok) throw new Error(`CheapShark /deals returned ${res.status}`)
     const deals = DealsResponseSchema.parse(await res.json())
 
@@ -139,7 +147,7 @@ export class CheapSharkAdapter implements VendorAdapter {
 
   async getProduct(vendorProductId: string): Promise<NormalizedProduct | null> {
     const url = `${BASE_URL}/deals?steamAppID=${encodeURIComponent(vendorProductId)}&pageSize=60`
-    const res = await fetch(url)
+    const res = await fetch(url, { headers: FETCH_HEADERS })
     if (!res.ok) throw new Error(`CheapShark /deals returned ${res.status}`)
     const deals = DealsResponseSchema.parse(await res.json())
 
