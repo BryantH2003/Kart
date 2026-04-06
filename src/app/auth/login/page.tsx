@@ -17,12 +17,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const supabase = createClient()
-
   async function handleEmailAuth(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
     try {
+      const supabase = createClient()
       if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) { toast.error(error.message); return }
@@ -38,6 +37,7 @@ export default function LoginPage() {
   }
 
   async function handleGoogle() {
+    const supabase = createClient()
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/auth/callback` },
