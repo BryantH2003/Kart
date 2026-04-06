@@ -5,6 +5,8 @@ import { AlertCircle } from 'lucide-react'
 import { Navbar } from '@/components/navbar'
 import { ProductCard } from '@/components/product-card'
 import { BROWSE_CATEGORIES } from '@/config/browse-categories'
+import { browse } from '@/services/browse.service'
+import type { BrowseSortBy } from '@/services/browse.service'
 import type { SearchResultItem } from '@/types/api.types'
 
 interface PageProps {
@@ -19,7 +21,7 @@ const SORT_OPTIONS = [
   { value: 'new_releases', label: 'New Releases' },
 ] as const
 
-type SortValue = (typeof SORT_OPTIONS)[number]['value']
+type SortValue = BrowseSortBy
 
 function isValidSort(v: string | undefined): v is SortValue {
   return SORT_OPTIONS.some(o => o.value === v)
@@ -36,19 +38,9 @@ async function BrowseResults({
   let errorMsg: string | null = null
 
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
-    const res = await fetch(
-      `${baseUrl}/api/browse?category=${encodeURIComponent(categorySlug)}&sortBy=${sortBy}`,
-      { cache: 'no-store' }
-    )
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      errorMsg = (body as { error?: string }).error ?? 'Failed to load results.'
-    } else {
-      results = await res.json()
-    }
-  } catch {
-    errorMsg = 'Unable to reach the server. Please try again.'
+    results = await browse(categorySlug, sortBy)
+  } catch (err) {
+    errorMsg = err instanceof Error ? err.message : 'Failed to load results.'
   }
 
   if (errorMsg) {

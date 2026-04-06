@@ -8,27 +8,16 @@ import { PriceHistoryChart } from '@/components/price-history-chart'
 import { WishlistButton } from '@/components/wishlist-button'
 import { RecommendationPanel } from '@/components/recommendation-panel'
 import { Badge } from '@/components/ui/badge'
+import { getProductPage } from '@/services/product.service'
 import type { ProductPageData } from '@/types/api.types'
 
 interface PageProps {
   params: Promise<{ id: string }>
 }
 
-async function getProduct(id: string): Promise<ProductPageData | null> {
-  try {
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
-    const res = await fetch(`${baseUrl}/api/products/${id}`, { cache: 'no-store' })
-    if (res.status === 404) return null
-    if (!res.ok) return null
-    return (await res.json()) as ProductPageData
-  } catch {
-    return null
-  }
-}
-
 export default async function ProductPage({ params }: PageProps) {
   const { id } = await params
-  const product = await getProduct(id)
+  const product = await getProductPage(id).catch(() => null)
 
   if (!product) notFound()
 

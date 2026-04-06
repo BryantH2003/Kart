@@ -81,7 +81,7 @@ async function sendAlertEmail(
 
   const productName = (vp?.canonical_products as { name: string } | null)?.name ?? 'A product'
   const unsubToken = generateUnsubToken(userId)
-  const unsubUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL?.replace('supabase.co', 'railway.app')}/api/unsubscribe?userId=${userId}&token=${unsubToken}`
+  const unsubUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/api/unsubscribe?userId=${userId}&token=${unsubToken}`
 
   await getResendClient().emails.send({
     from: process.env.RESEND_FROM_EMAIL!,

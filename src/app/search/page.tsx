@@ -5,6 +5,7 @@ import { Navbar } from '@/components/navbar'
 import { ProductCard } from '@/components/product-card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
+import { search } from '@/services/search.service'
 import type { SearchResultItem } from '@/types/api.types'
 
 interface PageProps {
@@ -25,20 +26,9 @@ async function SearchResults({ query }: { query: string }) {
   let errorMsg: string | null = null
 
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
-    const res = await fetch(
-      `${baseUrl}/api/search?q=${encodeURIComponent(query)}`,
-      { cache: 'no-store' },
-    )
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      errorMsg = (body as { error?: string }).error ?? 'Search failed. Please try again.'
-    } else {
-      const body = await res.json()
-      results = Array.isArray(body) ? (body as SearchResultItem[]) : ((body as { results: SearchResultItem[] }).results ?? [])
-    }
+    results = await search(query)
   } catch {
-    errorMsg = 'Unable to reach the server. Please try again.'
+    errorMsg = 'Search failed. Please try again.'
   }
 
   if (errorMsg) {
