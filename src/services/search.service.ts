@@ -11,7 +11,7 @@ const ADAPTER_TIMEOUT_MS = 7000
 export async function search(query: string): Promise<SearchResultItem[]> {
   const queryHash = cacheRepo.hashQuery(query)
 
-  const cached = await cacheRepo.get(queryHash)
+  const cached = await cacheRepo.get(queryHash).catch(() => null)
   if (cached) return cached as SearchResultItem[]
 
   const adapters = getAllAdapters()
