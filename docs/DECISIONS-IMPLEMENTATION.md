@@ -259,4 +259,56 @@ The `WishlistRow` delete action uses a native `<form method="POST">` pointing at
 ### Trade-off
 The server component imports from `@/services/wishlist.service` — a direct coupling that bypasses the HTTP controller layer. This is intentional for auth-gated server renders but means the service must work correctly when called outside of an HTTP request context (it does, since services have no HTTP dependencies).
 
+---
+
+## 10. Cloudflare Blocks Vendor API Requests from Cloud Provider IPs Without a User-Agent
+
+### The Problem
+The CheapShark adapter worked perfectly in local development but returned HTTP 403 on every request (`/deals`, `/games`, `/stores`) when deployed to Railway. The error surfaced on the browse page as "Browse failed: Error: CheapShark /deals returned 403" and caused all search results to fail silently.
+
+The root cause: CheapShark sits behind Cloudflare. Cloudflare's bot protection flags requests originating from cloud provider IP ranges (Railway, AWS, GCP, Vercel, etc.) as suspicious when they arrive without a `User-Agent` header. A browser making the same request would include a `User-Agent` automatically; Node.js `fetch()` does not.
+
+### Options Considered
+1. **Proxy requests through a residential IP** — effective but adds infrastructure, latency, and cost.
+2. **Add a `User-Agent` header** — minimal change; Cloudflare's default bot detection uses User-Agent as a primary signal and passes requests with a recognizable browser-style UA.
+3. **Switch to a different data source** — nuclear option, premature given option 2 hadn't been tried.
+
+### The Decision
+Added a `FETCH_HEADERS` constant to the CheapShark adapter with a browser-style `User-Agent` and `Accept: application/json`. Applied to all four `fetch()` calls in the adapter (`/games`, `/deals` for browse, `/deals` for getProduct, `/stores`).
+
+```typescript
+const FETCH_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (compatible; Kart/1.0; price-tracker)',
+  'Accept': 'application/json',
+}
+```
+
+### The Rule
+Any vendor API that uses Cloudflare or similar CDN-level bot protection requires a `User-Agent` header on server-side `fetch()` calls. Node.js's default fetch sends no `User-Agent`, which is indistinguishable from a bot to Cloudflare's default ruleset. Always set headers on vendor `fetch()` calls; the absence of headers is what triggers the 403, not the request content.
+
+---
+
+## 11. Cache Failures in the Search Service Must Be Non-Fatal
+
+### The Problem
+`search.service.ts` uses a 30-minute Supabase cache (`search_cache` table). The original implementation awaited both `cacheRepo.get()` and `cacheRepo.set()` without error handling. When the cache read or write failed for any reason — missing Supabase env vars, RLS policy not applied to production, transient network error — the exception propagated directly to the page, which showed "Search failed. Please try again." The user saw an error even though the upstream CheapShark API was healthy.
+
+This meant the search feature was dependent on three things being healthy simultaneously: the CheapShark API, the Supabase connection, and the RLS policies for `search_cache`. A failure in any one of them broke search entirely.
+
+### The Decision
+Wrap both `cacheRepo.get()` and `cacheRepo.set()` in `.catch(() => null)` and `.catch(() => {})` respectively:
+
+```typescript
+const cached = await cacheRepo.get(queryHash).catch(() => null)  // miss on error
+// ...
+await cacheRepo.set(queryHash, items).catch(() => {/* non-fatal */})
+```
+
+A cache read failure is treated as a cache miss — the search proceeds normally, just without the latency benefit. A cache write failure is silently swallowed — the results are still returned to the user; the next identical query just won't be cached.
+
+### The Trade-off
+Cache errors are now invisible. If Supabase is persistently broken, the cache layer stops working but the symptom is slower search (every query hits CheapShark) rather than a visible error. This is the correct trade-off for a cache: it is an optimization, not a requirement. Silent degradation is better than hard failure.
+
+If silent Supabase failures are a concern, the right tool is server-side logging (`console.error`) inside the `.catch()` handlers, not surfacing the error to the user.
+
 *Add an entry here whenever a code-level decision is made that isn't obvious from reading the code alone — performance trade-offs, implementation quirks, non-obvious TypeScript patterns, or tooling configuration choices.*

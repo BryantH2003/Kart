@@ -368,4 +368,27 @@ For the wishlist page specifically, we took option 1 — calling the service dir
 ### General principle
 Prefer calling services directly from server components when the route is auth-gated and there's no middleware benefit from going through HTTP. Use the base URL pattern for public pages (search, product) where caching and eventual CDN placement may matter.
 
+---
+
+## 10. Server Components Must Call Services Directly, Not Via HTTP
+
+### The Problem
+The search, product, and browse pages were implemented using the `NEXT_PUBLIC_SITE_URL` base URL pattern (decision #9). This worked in local dev but broke silently in the Railway deployment: `NEXT_PUBLIC_SITE_URL` was not set, so all three pages fell back to `http://localhost:3000`, which does not exist in production. Each page caught the connection error and rendered empty — no data, no visible error to the user.
+
+The fundamental issue: an environment variable was load-bearing for basic functionality. Forgetting to set it in a new deployment environment silently broke everything.
+
+### Why Option 1 Was Reconsidered
+Decision #9 noted option 1 (call services directly) "bypasses HTTP-level middleware (rate limiting, auth checks)." In practice:
+- Rate limiting in this project is in-process middleware (`proxy.ts`), not an HTTP gateway — it only applies to external callers, not to internal server-to-server calls. There is nothing to bypass.
+- The pages in question are public (no auth required), so auth middleware is irrelevant.
+- The HTTP round-trip added latency, an extra network hop in production, and a fragile env var dependency with no benefit.
+
+### The Decision
+All three pages now call service functions directly: `search()`, `getProductPage()`, and `browse()`. The `NEXT_PUBLIC_SITE_URL` fallback pattern was removed from pages entirely. `browse()` logic was extracted from the route handler into `src/services/browse.service.ts` so it could be called from both the API route and the page component.
+
+The API routes remain unchanged — they are still the external-facing HTTP interface. The pages just no longer go through HTTP to reach them.
+
+### General principle
+Server Components should call the service layer directly. The HTTP API exists for external callers (browsers, mobile apps, cron jobs). A Server Component calling its own API via HTTP is an unnecessary round-trip that introduces env var dependencies and failure modes with no architectural benefit.
+
 *Add an entry here whenever a pattern, technology choice, or system-level structure decision is made. Focus on the "why" — what problem was being solved and what alternatives were ruled out.*
